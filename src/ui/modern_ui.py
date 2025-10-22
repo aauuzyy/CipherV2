@@ -328,13 +328,15 @@ class ModernUI:
         ]
         
         for icon, command in action_buttons:
+            # Special handling for keyboard icon alignment
+            pady_offset = 5 if icon == "⌨" else 0
             btn = tk.Button(actions_frame, text=icon,
                            font=("Segoe UI", 14),
                            bg=self.secondary_bg, fg=self.text_color,
                            border=0, cursor="hand2",
                            width=3, height=1,
                            command=command)
-            btn.pack(side=tk.LEFT, padx=2)
+            btn.pack(side=tk.LEFT, padx=2, pady=(pady_offset, 0))
             btn.bind("<Enter>", lambda e, b=btn: b.config(bg="#444444"))
             btn.bind("<Leave>", lambda e, b=btn: b.config(bg=self.secondary_bg))
         
@@ -1397,232 +1399,260 @@ class ModernUI:
             self.memory_scanner = MemoryScanner()
         
         container = tk.Frame(self.page_container, bg=self.bg_color)
-        container.pack(fill=tk.BOTH, expand=True, padx=15, pady=15)
+        container.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
         
-        # Header with icon
+        # Header
         header_frame = tk.Frame(container, bg=self.bg_color)
         header_frame.pack(fill=tk.X, pady=(0, 20))
         
-        header = tk.Label(header_frame, text="⚡ Value Changer",
-                         font=("Segoe UI", 18, "bold"),
-                         bg=self.bg_color, fg=self.text_color)
-        header.pack(side=tk.LEFT)
+        tk.Label(header_frame, text="⚡ Value Changer",
+                font=("Segoe UI", 20, "bold"),
+                bg=self.bg_color, fg=self.text_color).pack(side=tk.LEFT)
         
-        subtitle = tk.Label(header_frame, text="Memory Scanner & Editor",
-                           font=("Segoe UI", 10),
-                           bg=self.bg_color, fg="#888888")
-        subtitle.pack(side=tk.LEFT, padx=10)
+        tk.Label(header_frame, text="Memory Scanner & Editor",
+                font=("Segoe UI", 10),
+                bg=self.bg_color, fg="#666666").pack(side=tk.LEFT, padx=(15, 0))
         
-        # Process Controls Card
-        process_card = tk.Frame(container, bg=self.secondary_bg)
+        # Process Controls Card - Dark themed
+        process_card = tk.Frame(container, bg="#1e1e1e", highlightbackground="#333333", 
+                               highlightthickness=1)
         process_card.pack(fill=tk.X, pady=(0, 15))
         
-        process_header = tk.Label(process_card, text="🎯 Process Selection",
-                                 font=("Segoe UI", 11, "bold"),
-                                 bg=self.secondary_bg, fg=self.text_color)
-        process_header.pack(anchor="w", padx=15, pady=(10, 5))
+        # Process card header
+        tk.Label(process_card, text="🎯 Process Selection",
+                font=("Segoe UI", 11, "bold"),
+                bg="#1e1e1e", fg=self.text_color).pack(anchor="w", padx=20, pady=(15, 10))
         
-        controls_inner = tk.Frame(process_card, bg=self.secondary_bg)
-        controls_inner.pack(fill=tk.X, padx=15, pady=(0, 15))
-        
-        # Process dropdown
-        process_frame = tk.Frame(controls_inner, bg=self.secondary_bg)
-        process_frame.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        # Process selection
+        process_select = tk.Frame(process_card, bg="#1e1e1e")
+        process_select.pack(fill=tk.X, padx=20, pady=(0, 15))
         
         self.process_var = tk.StringVar()
-        process_combo = ttk.Combobox(process_frame, textvariable=self.process_var,
-                                     width=45, state="readonly", font=("Segoe UI", 10))
-        process_combo.pack(side=tk.LEFT, ipady=5)
+        process_combo = ttk.Combobox(process_select, textvariable=self.process_var,
+                                    width=55, state="readonly", font=("Segoe UI", 10))
+        process_combo.pack(side=tk.LEFT, ipady=6)
         
-        # Buttons frame
-        btn_frame = tk.Frame(controls_inner, bg=self.secondary_bg)
-        btn_frame.pack(side=tk.LEFT, padx=(10, 0))
+        # Buttons row - filling space
+        btn_row = tk.Frame(process_card, bg="#1e1e1e")
+        btn_row.pack(fill=tk.X, padx=20, pady=(0, 15))
         
-        # Refresh button
-        refresh_btn = tk.Button(btn_frame, text="🔄",
-                               font=("Segoe UI", 11),
-                               bg=self.accent_color, fg="white",
-                               border=0, width=3, height=1,
+        refresh_btn = tk.Button(btn_row, text="🔄 Refresh",
+                               font=("Segoe UI", 10, "bold"),
+                               bg="#2d2d2d", fg="white",
+                               activebackground="#3d3d3d",
+                               relief=tk.FLAT, bd=0,
                                cursor="hand2",
                                command=lambda: self.refresh_process_list(process_combo))
-        refresh_btn.pack(side=tk.LEFT, padx=2)
-        self.add_hover_effect(refresh_btn, "#0066cc", self.accent_color)
+        refresh_btn.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 8), ipady=10)
+        self.add_hover_effect(refresh_btn, "#3d3d3d", "#2d2d2d")
         
-        # Attach button
-        attach_btn = tk.Button(btn_frame, text="▶ Attach",
+        attach_btn = tk.Button(btn_row, text="▶ Attach",
                               font=("Segoe UI", 10, "bold"),
                               bg="#00aa00", fg="white",
-                              border=0, padx=20, pady=8,
+                              activebackground="#00cc00",
+                              relief=tk.FLAT, bd=0,
                               cursor="hand2",
                               command=lambda: self.attach_to_process())
-        attach_btn.pack(side=tk.LEFT, padx=2)
-        self.add_hover_effect(attach_btn, "#009900", "#00aa00")
+        attach_btn.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 8), ipady=10)
+        self.add_hover_effect(attach_btn, "#00cc00", "#00aa00")
         
-        # Detach button
-        detach_btn = tk.Button(btn_frame, text="⏹ Detach",
+        detach_btn = tk.Button(btn_row, text="⏹ Detach",
                               font=("Segoe UI", 10, "bold"),
-                              bg="#cc3333", fg="white",
-                              border=0, padx=20, pady=8,
+                              bg="#dd3333", fg="white",
+                              activebackground="#ee4444",
+                              relief=tk.FLAT, bd=0,
                               cursor="hand2",
                               command=lambda: self.detach_from_process())
-        detach_btn.pack(side=tk.LEFT, padx=2)
-        self.add_hover_effect(detach_btn, "#bb2222", "#cc3333")
+        detach_btn.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, ipady=10)
+        self.add_hover_effect(detach_btn, "#ee4444", "#dd3333")
         
-        # Scan controls frame
-        scan_frame = tk.Frame(container, bg=self.secondary_bg)
-        scan_frame.pack(fill=tk.X, pady=(0, 10))
+        # Scan Controls Card - Dark themed
+        scan_card = tk.Frame(container, bg="#1e1e1e", highlightbackground="#333333",
+                            highlightthickness=1)
+        scan_card.pack(fill=tk.X, pady=(0, 15))
         
-        # Value to scan
-        value_label = tk.Label(scan_frame, text="Value:",
-                              font=("Segoe UI", 10),
-                              bg=self.secondary_bg, fg=self.text_color)
-        value_label.grid(row=0, column=0, padx=10, pady=10, sticky="w")
+        # Scan card header
+        tk.Label(scan_card, text="🔍 Memory Scanner",
+                font=("Segoe UI", 11, "bold"),
+                bg="#1e1e1e", fg=self.text_color).pack(anchor="w", padx=20, pady=(15, 10))
+        
+        # Input controls
+        input_frame = tk.Frame(scan_card, bg="#1e1e1e")
+        input_frame.pack(fill=tk.X, padx=20, pady=(0, 15))
+        
+        # Value input
+        value_frame = tk.Frame(input_frame, bg="#1e1e1e")
+        value_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 15))
+        
+        tk.Label(value_frame, text="Value:",
+                font=("Segoe UI", 9, "bold"),
+                bg="#1e1e1e", fg="#aaaaaa").pack(anchor="w", pady=(0, 5))
         
         self.scan_value_var = tk.StringVar()
-        value_entry = tk.Entry(scan_frame, textvariable=self.scan_value_var,
-                              font=("Consolas", 10), width=20,
-                              bg=self.bg_color, fg=self.text_color,
-                              insertbackground=self.text_color)
-        value_entry.grid(row=0, column=1, padx=5, pady=10)
+        value_entry = tk.Entry(value_frame, textvariable=self.scan_value_var,
+                              font=("Consolas", 11),
+                              bg="#0d0d0d", fg=self.text_color,
+                              insertbackground=self.accent_color,
+                              relief=tk.FLAT, bd=0)
+        value_entry.pack(fill=tk.X, ipady=8, ipadx=10)
         
-        # Value type
-        type_label = tk.Label(scan_frame, text="Type:",
-                             font=("Segoe UI", 10),
-                             bg=self.secondary_bg, fg=self.text_color)
-        type_label.grid(row=0, column=2, padx=10, pady=10, sticky="w")
+        # Type selector
+        type_frame = tk.Frame(input_frame, bg="#1e1e1e")
+        type_frame.pack(side=tk.LEFT)
+        
+        tk.Label(type_frame, text="Type:",
+                font=("Segoe UI", 9, "bold"),
+                bg="#1e1e1e", fg="#aaaaaa").pack(anchor="w", pady=(0, 5))
         
         self.value_type_var = tk.StringVar(value="4 Bytes")
-        type_combo = ttk.Combobox(scan_frame, textvariable=self.value_type_var,
-                                  values=["Byte", "2 Bytes", "4 Bytes", "Float", "Double"],
-                                  width=12, state="readonly")
-        type_combo.grid(row=0, column=3, padx=5, pady=10)
+        type_combo = ttk.Combobox(type_frame, textvariable=self.value_type_var,
+                                 values=["Byte", "2 Bytes", "4 Bytes", "Float", "Double"],
+                                 width=15, state="readonly", font=("Segoe UI", 10))
+        type_combo.pack(ipady=7)
         
-        # First scan button
-        first_scan_btn = tk.Button(scan_frame, text="🔍 First Scan",
-                                   font=("Segoe UI", 10, "bold"),
-                                   bg=self.accent_color, fg="white",
-                                   border=0, padx=20, pady=8,
-                                   cursor="hand2",
-                                   command=lambda: self.perform_first_scan())
-        first_scan_btn.grid(row=0, column=4, padx=5, pady=10)
+        # Scan buttons - filling space
+        scan_btns = tk.Frame(scan_card, bg="#1e1e1e")
+        scan_btns.pack(fill=tk.X, padx=20, pady=(0, 15))
         
-        # Next scan button
-        next_scan_btn = tk.Button(scan_frame, text="🔎 Next Scan",
-                                 font=("Segoe UI", 10, "bold"),
-                                 bg="#0066cc", fg="white",
-                                 border=0, padx=20, pady=8,
-                                 cursor="hand2",
-                                 command=lambda: self.perform_next_scan())
-        next_scan_btn.grid(row=0, column=5, padx=5, pady=10)
+        first_scan = tk.Button(scan_btns, text="🔍 First Scan",
+                              font=("Segoe UI", 11, "bold"),
+                              bg=self.accent_color, fg="white",
+                              activebackground="#0066cc",
+                              relief=tk.FLAT, bd=0,
+                              cursor="hand2",
+                              command=lambda: self.perform_first_scan())
+        first_scan.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 8), ipady=12)
+        self.add_hover_effect(first_scan, "#0066cc", self.accent_color)
         
-        # Stop button
-        stop_btn = tk.Button(scan_frame, text="⏹ Stop",
-                            font=("Segoe UI", 10, "bold"),
-                            bg="#cc0000", fg="white",
-                            border=0, padx=15, pady=8,
-                            cursor="hand2",
-                            command=lambda: self.stop_scan())
-        stop_btn.grid(row=0, column=6, padx=5, pady=10)
-        
-        # Progress bar
-        progress_frame = tk.Frame(container, bg=self.secondary_bg)
-        progress_frame.pack(fill=tk.X, pady=(0, 10))
-        
-        self.scan_progress_label = tk.Label(progress_frame, text="Ready",
-                                           font=("Segoe UI", 9),
-                                           bg=self.secondary_bg, fg=self.text_color)
-        self.scan_progress_label.pack(side=tk.LEFT, padx=10, pady=5)
-        
-        self.scan_progressbar = ttk.Progressbar(progress_frame, length=400, mode='determinate')
-        self.scan_progressbar.pack(side=tk.LEFT, padx=10, pady=5)
-        
-        # Split view - Found addresses and Address list
-        split_frame = tk.Frame(container, bg=self.bg_color)
-        split_frame.pack(fill=tk.BOTH, expand=True)
-        
-        # Left side - Found addresses
-        left_frame = tk.Frame(split_frame, bg=self.secondary_bg)
-        left_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 5))
-        
-        left_label = tk.Label(left_frame, text="Found Addresses",
+        next_scan = tk.Button(scan_btns, text="🔎 Next Scan",
                              font=("Segoe UI", 11, "bold"),
-                             bg=self.secondary_bg, fg=self.text_color)
-        left_label.pack(pady=5)
+                             bg="#0066cc", fg="white",
+                             activebackground="#0077dd",
+                             relief=tk.FLAT, bd=0,
+                             cursor="hand2",
+                             command=lambda: self.perform_next_scan())
+        next_scan.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 8), ipady=12)
+        self.add_hover_effect(next_scan, "#0077dd", "#0066cc")
         
-        # Listbox for found addresses
-        list_frame = tk.Frame(left_frame, bg=self.secondary_bg)
-        list_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        stop_scan = tk.Button(scan_btns, text="⏹ Stop",
+                             font=("Segoe UI", 11, "bold"),
+                             bg="#cc0000", fg="white",
+                             activebackground="#dd0000",
+                             relief=tk.FLAT, bd=0,
+                             cursor="hand2",
+                             command=lambda: self.stop_scan())
+        stop_scan.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, ipady=12)
+        self.add_hover_effect(stop_scan, "#dd0000", "#cc0000")
         
-        scrollbar = tk.Scrollbar(list_frame, **self.get_scrollbar_config())
-        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        # Progress
+        progress_frame = tk.Frame(scan_card, bg="#0d0d0d")
+        progress_frame.pack(fill=tk.X, padx=20, pady=(0, 15))
         
-        self.found_addresses_list = tk.Listbox(list_frame, font=("Consolas", 9),
-                                               bg=self.bg_color, fg=self.text_color,
+        progress_inner = tk.Frame(progress_frame, bg="#0d0d0d")
+        progress_inner.pack(fill=tk.X, padx=15, pady=12)
+        
+        self.scan_progress_label = tk.Label(progress_inner, text="Ready",
+                                           font=("Segoe UI", 10, "bold"),
+                                           bg="#0d0d0d", fg="#aaaaaa")
+        self.scan_progress_label.pack(anchor="w", pady=(0, 8))
+        
+        self.scan_progressbar = ttk.Progressbar(progress_inner, mode='determinate')
+        self.scan_progressbar.pack(fill=tk.X)
+        
+        # Results - Split panels
+        results = tk.Frame(container, bg=self.bg_color)
+        results.pack(fill=tk.BOTH, expand=True)
+        
+        # Left - Found Addresses
+        left_panel = tk.Frame(results, bg="#1e1e1e", highlightbackground="#333333",
+                             highlightthickness=1)
+        left_panel.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 8))
+        
+        tk.Label(left_panel, text="📋 Found Addresses",
+                font=("Segoe UI", 11, "bold"),
+                bg="#1e1e1e", fg=self.text_color).pack(anchor="w", padx=20, pady=15)
+        
+        list_container = tk.Frame(left_panel, bg="#1e1e1e")
+        list_container.pack(fill=tk.BOTH, expand=True, padx=15, pady=(0, 15))
+        
+        list_scroll = tk.Scrollbar(list_container, **self.get_scrollbar_config())
+        list_scroll.pack(side=tk.RIGHT, fill=tk.Y)
+        
+        self.found_addresses_list = tk.Listbox(list_container,
+                                               font=("Consolas", 10),
+                                               bg="#0d0d0d", fg=self.text_color,
                                                selectbackground=self.accent_color,
-                                               yscrollcommand=scrollbar.set)
+                                               selectforeground="white",
+                                               relief=tk.FLAT, bd=0,
+                                               highlightthickness=0,
+                                               yscrollcommand=list_scroll.set)
         self.found_addresses_list.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        scrollbar.config(command=self.found_addresses_list.yview)
+        list_scroll.config(command=self.found_addresses_list.yview)
         
-        # Add to address list button
-        add_btn = tk.Button(left_frame, text="➕ Add Selected to Address List",
-                           font=("Segoe UI", 9, "bold"),
+        add_btn = tk.Button(left_panel, text="➕ Add Selected",
+                           font=("Segoe UI", 10, "bold"),
                            bg=self.accent_color, fg="white",
-                           border=0, padx=10, pady=5,
+                           activebackground="#0066cc",
+                           relief=tk.FLAT, bd=0,
                            cursor="hand2",
                            command=lambda: self.add_to_address_list())
-        add_btn.pack(pady=5)
+        add_btn.pack(fill=tk.X, padx=15, pady=(0, 15), ipady=10)
+        self.add_hover_effect(add_btn, "#0066cc", self.accent_color)
         
-        # Right side - Address list (for editing)
-        right_frame = tk.Frame(split_frame, bg=self.secondary_bg)
-        right_frame.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True, padx=(5, 0))
+        # Right - Address List
+        right_panel = tk.Frame(results, bg="#1e1e1e", highlightbackground="#333333",
+                              highlightthickness=1)
+        right_panel.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True, padx=(8, 0))
         
-        right_label = tk.Label(right_frame, text="Address List",
-                              font=("Segoe UI", 11, "bold"),
-                              bg=self.secondary_bg, fg=self.text_color)
-        right_label.pack(pady=5)
+        tk.Label(right_panel, text="✏️ Address List (Double-click to edit)",
+                font=("Segoe UI", 11, "bold"),
+                bg="#1e1e1e", fg=self.text_color).pack(anchor="w", padx=20, pady=15)
         
-        # Treeview for address list with editable values
-        tree_frame = tk.Frame(right_frame, bg=self.secondary_bg)
-        tree_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        tree_container = tk.Frame(right_panel, bg="#1e1e1e")
+        tree_container.pack(fill=tk.BOTH, expand=True, padx=15, pady=(0, 15))
         
-        tree_scroll = tk.Scrollbar(tree_frame, **self.get_scrollbar_config())
+        tree_scroll = tk.Scrollbar(tree_container, **self.get_scrollbar_config())
         tree_scroll.pack(side=tk.RIGHT, fill=tk.Y)
         
-        self.address_tree = ttk.Treeview(tree_frame, columns=("Address", "Value", "Type"),
-                                        show="headings", yscrollcommand=tree_scroll.set)
+        self.address_tree = ttk.Treeview(tree_container,
+                                        columns=("Address", "Value", "Type"),
+                                        show="headings",
+                                        yscrollcommand=tree_scroll.set)
         self.address_tree.heading("Address", text="Address")
         self.address_tree.heading("Value", text="Value")
         self.address_tree.heading("Type", text="Type")
-        self.address_tree.column("Address", width=120)
-        self.address_tree.column("Value", width=100)
-        self.address_tree.column("Type", width=80)
+        self.address_tree.column("Address", width=140, anchor="w")
+        self.address_tree.column("Value", width=120, anchor="w")
+        self.address_tree.column("Type", width=100, anchor="center")
         self.address_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         tree_scroll.config(command=self.address_tree.yview)
-        
-        # Double-click to edit value
         self.address_tree.bind("<Double-1>", self.edit_address_value)
         
-        # Buttons for address list
-        btn_frame = tk.Frame(right_frame, bg=self.secondary_bg)
-        btn_frame.pack(pady=5)
+        # Control buttons - filling space
+        controls = tk.Frame(right_panel, bg="#1e1e1e")
+        controls.pack(fill=tk.X, padx=15, pady=(0, 15))
         
-        remove_btn = tk.Button(btn_frame, text="🗑 Remove",
-                              font=("Segoe UI", 9, "bold"),
+        remove_btn = tk.Button(controls, text="🗑 Remove",
+                              font=("Segoe UI", 10, "bold"),
                               bg="#cc0000", fg="white",
-                              border=0, padx=10, pady=5,
+                              activebackground="#dd0000",
+                              relief=tk.FLAT, bd=0,
                               cursor="hand2",
                               command=lambda: self.remove_from_address_list())
-        remove_btn.pack(side=tk.LEFT, padx=5)
+        remove_btn.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 8), ipady=10)
+        self.add_hover_effect(remove_btn, "#dd0000", "#cc0000")
         
-        refresh_values_btn = tk.Button(btn_frame, text="🔄 Refresh Values",
-                                      font=("Segoe UI", 9, "bold"),
-                                      bg=self.accent_color, fg="white",
-                                      border=0, padx=10, pady=5,
-                                      cursor="hand2",
-                                      command=lambda: self.refresh_address_values())
-        refresh_values_btn.pack(side=tk.LEFT, padx=5)
+        refresh_btn = tk.Button(controls, text="🔄 Refresh",
+                               font=("Segoe UI", 10, "bold"),
+                               bg="#2d2d2d", fg="white",
+                               activebackground="#3d3d3d",
+                               relief=tk.FLAT, bd=0,
+                               cursor="hand2",
+                               command=lambda: self.refresh_address_values())
+        refresh_btn.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, ipady=10)
+        self.add_hover_effect(refresh_btn, "#3d3d3d", "#2d2d2d")
         
-        # Initialize with process list
+        # Initialize
         self.refresh_process_list(process_combo)
     
     def refresh_process_list(self, combo):
