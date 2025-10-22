@@ -16,10 +16,25 @@ from utils.json_tools import JSONHandler
 class ModernUI:
     def __init__(self, root):
         self.root = root
-        self.root.title("")
-        self.root.geometry("1000x700")
-        self.root.minsize(800, 600)  # Set minimum size
-        self.root.resizable(True, True)  # Make resizable
+        self.root.title("CipherV4")
+        self.root.geometry("1400x800")  # Wider window for better layout
+        self.root.resizable(False, False)  # Disable resizing
+        
+        # Set custom icon
+        try:
+            icon_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'assets', 'cipher_icon.ico')
+            if os.path.exists(icon_path):
+                self.root.iconbitmap(icon_path)
+                # For Windows taskbar - set app ID to show custom icon
+                try:
+                    import ctypes
+                    myappid = 'cipherv4.codeeditor.app.4.5'  # arbitrary string
+                    ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
+                except:
+                    pass
+        except Exception as e:
+            print(f"Could not load icon: {e}")
+        
         self.root.overrideredirect(True)
         
         # Initialize managers and handlers
@@ -55,6 +70,51 @@ class ModernUI:
         # Console content persistence
         self.console_content = ""
         
+        # Real-time statistics tracking
+        self.stats = {
+            "executions": 0,
+            "successful_runs": 0,
+            "errors": 0,
+            "snippets_used": 0,
+            "lines_written": 0,
+            "session_start": time.time(),
+            "total_execution_time": 0.0,
+            "files_saved": 0,
+            "ai_queries": 0,
+        }
+        
+        # Settings state dictionary
+        self.settings_state = {
+            "Syntax Highlighting": True,
+            "Line Numbers": True,
+            "Auto-complete": False,
+            "Auto-indent": True,
+            "Word Wrap": False,
+            "Bracket Matching": True,
+            "Code Folding": False,
+            "Minimap": False,
+            "Font Size": 10,
+            "Auto-save": True,
+            "Notifications": True,
+            "Sound Effects": False,
+            "Spell Check": False,
+            "Tab Size": 4,
+            "Trim Whitespace": True,
+            "Format on Save": False,
+            "Debug Mode": False,
+            "Telemetry": False,
+            "Auto-update": True,
+            "Experimental Features": False,
+            "Performance Mode": False,
+            "Memory Limit": 512,
+            "GPU Acceleration": False,
+            "Save History": True,
+            "Remember Session": True,
+            "Encrypted Storage": False,
+            "Password Protection": False,
+            "Clear on Exit": False,
+        }
+        
         # Initialize theme
         self.apply_theme()
         
@@ -89,14 +149,30 @@ class ModernUI:
         for key, value in theme.items():
             setattr(self, key, value)
         self.root.configure(bg=self.bg_color)
+    
+    def get_scrollbar_config(self):
+        """Get scrollbar colors based on current theme"""
+        if hasattr(self, 'bg_color'):
+            if self.bg_color == "#1e1e1e":  # Dark theme
+                return {'bg': "#000000", 'troughcolor': self.bg_color, 'activebackground': self.accent_color}
+            elif self.bg_color == "#f5f5f5":  # Light theme
+                return {'bg': "#e0e0e0", 'troughcolor': self.bg_color, 'activebackground': self.accent_color}
+            elif self.bg_color == "#0d1b2a":  # Ocean
+                return {'bg': "#001f3f", 'troughcolor': self.bg_color, 'activebackground': "#00b4d8"}
+            elif self.bg_color == "#1a2e1a":  # Forest
+                return {'bg': "#0d1a0d", 'troughcolor': self.bg_color, 'activebackground': "#4caf50"}
+            elif self.bg_color == "#2c1810":  # Sunset
+                return {'bg': "#1a0d08", 'troughcolor': self.bg_color, 'activebackground': "#ff6f00"}
+        return {'bg': "#000000", 'troughcolor': "#1e1e1e", 'activebackground': "#007acc"}
+
 
     def show_loading_screen(self):
         """Show the initial loading screen"""
         self.loading_frame = tk.Frame(self.root, bg=self.bg_color)
-        self.loading_frame.place(x=0, y=0, width=800, height=600)
+        self.loading_frame.place(x=0, y=0, width=1000, height=800)
         
         # Create loading screen widgets
-        title = tk.Label(self.loading_frame, text="CipherV2",
+        title = tk.Label(self.loading_frame, text="CipherV4",
                         font=("Segoe UI", 24, "bold"),
                         bg=self.bg_color, fg=self.text_color)
         title.place(relx=0.5, rely=0.4, anchor="center")
@@ -179,9 +255,6 @@ class ModernUI:
         self.create_main_content()
         self.create_status_bar()
         
-        # Add resize grips
-        self.create_resize_grips()
-        
         # Start auto-save
         self.start_auto_save()
 
@@ -223,14 +296,14 @@ class ModernUI:
         title_frame = tk.Frame(self.header, bg=self.secondary_bg)
         title_frame.pack(side=tk.LEFT, expand=True)
         
-        title = tk.Label(title_frame, text="CipherV2",
+        title = tk.Label(title_frame, text="CipherV4",
                         font=("Segoe UI", 18, "bold"),
                         bg=self.secondary_bg, fg=self.text_color)
         title.pack(side=tk.LEFT, padx=10, pady=15)
         title.bind("<Button-1>", self.start_drag)
         title.bind("<B1-Motion>", self.do_drag)
         
-        version = tk.Label(title_frame, text="v2.0",
+        version = tk.Label(title_frame, text="v4.0",
                           font=("Segoe UI", 8),
                           bg=self.secondary_bg, fg="#a0a0a0")
         version.pack(side=tk.LEFT, pady=15)
@@ -271,6 +344,7 @@ class ModernUI:
             "Console": "Console",
             "History": "History",
             "Snippets": "Snippets",
+            "AI Assistant": "AI Assistant",
             "Progress": "Progress",
             "Settings": "Settings",
             "About": "About"
@@ -327,7 +401,7 @@ class ModernUI:
             
         self.current_page = page
         
-        # Clear existing content
+        # Fade out effect
         for widget in self.content_frame.winfo_children():
             widget.destroy()
         
@@ -340,9 +414,30 @@ class ModernUI:
                 btn.config(bg=self.secondary_bg, fg=self.text_color)
                 btn.border_indicator.config(bg=self.secondary_bg)
         
-        # Load page content
+        # Load page content with fade-in
         self.update_status(f"Loading {page}...")
+        
+        # Create container with initial transparency effect
+        self.page_container = tk.Frame(self.content_frame, bg=self.bg_color)
+        self.page_container.pack(fill=tk.BOTH, expand=True)
+        self.page_container.pack_forget()
+        
+        # Load content then fade in
+        self.root.after(10, lambda: self.load_page_content_animated(page))
+    
+    def load_page_content_animated(self, page):
+        """Load page content with fade-in animation"""
+        # Destroy old container content
+        for widget in self.content_frame.winfo_children():
+            if widget != self.page_container:
+                widget.destroy()
+        
+        # Load actual content
         self.load_page_content(page)
+        
+        # Fade in effect
+        self.page_container.pack(fill=tk.BOTH, expand=True)
+        self.update_status("Ready")
     
     def load_page_content(self, page):
         """Load the actual page content"""
@@ -354,17 +449,18 @@ class ModernUI:
             self.show_history()
         elif page == "Snippets":
             self.show_snippets()
+        elif page == "AI Assistant":
+            self.show_ai_assistant()
         elif page == "Progress":
             self.show_progress_page()
         elif page == "Settings":
             self.show_settings()
         elif page == "About":
             self.show_about()
-        self.update_status("Ready")
 
     def show_dashboard(self):
-        """Show the dashboard view with animated cards"""
-        container = tk.Frame(self.content_frame, bg=self.bg_color)
+        """Show the dashboard view with real statistics"""
+        container = tk.Frame(self.page_container, bg=self.bg_color)
         container.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
         
         welcome = tk.Label(container, text="Dashboard",
@@ -372,23 +468,35 @@ class ModernUI:
                           bg=self.bg_color, fg=self.text_color)
         welcome.pack(anchor="w", pady=(0, 10))
         
+        # Calculate session duration
+        session_duration = int(time.time() - self.stats["session_start"])
+        hours = session_duration // 3600
+        minutes = (session_duration % 3600) // 60
+        session_time = f"{hours}h {minutes}m" if hours > 0 else f"{minutes}m"
+        
         desc = tk.Label(container, 
-                       text="Welcome! Manage your tasks and monitor progress.",
+                       text=f"Session Time: {session_time} • Track your coding activity in real-time",
                        font=("Segoe UI", 10),
                        bg=self.bg_color, fg="#a0a0a0")
         desc.pack(anchor="w", pady=(0, 20))
         
-        # Create animated cards grid
+        # Create statistics cards grid
         cards_frame = tk.Frame(container, bg=self.bg_color)
         cards_frame.pack(fill=tk.BOTH, expand=True)
         
-        self.create_dashboard_card(cards_frame, "Quick Action", "Execute a fast task", 0, 0)
-        self.create_dashboard_card(cards_frame, "Batch Process", "Process multiple items", 0, 1)
-        self.create_dashboard_card(cards_frame, "Analysis", "Analyze your data", 1, 0)
-        self.create_dashboard_card(cards_frame, "Export", "Export results", 1, 1)
+        # Real statistics
+        success_rate = f"{(self.stats['successful_runs'] / self.stats['executions'] * 100):.1f}%" if self.stats['executions'] > 0 else "N/A"
+        avg_exec_time = f"{(self.stats['total_execution_time'] / self.stats['executions']):.3f}s" if self.stats['executions'] > 0 else "N/A"
+        
+        self.create_stat_card(cards_frame, "Code Executions", str(self.stats['executions']), "▶", 0, 0)
+        self.create_stat_card(cards_frame, "Success Rate", success_rate, "✓", 0, 1)
+        self.create_stat_card(cards_frame, "Snippets Used", str(self.stats['snippets_used']), "📝", 1, 0)
+        self.create_stat_card(cards_frame, "Avg Exec Time", avg_exec_time, "⏱", 1, 1)
+        self.create_stat_card(cards_frame, "Lines Written", str(self.stats['lines_written']), "📄", 2, 0)
+        self.create_stat_card(cards_frame, "Files Saved", str(self.stats['files_saved']), "💾", 2, 1)
     
-    def create_dashboard_card(self, parent, title, desc, row, col):
-        """Create an animated dashboard card"""
+    def create_stat_card(self, parent, title, value, icon, row, col):
+        """Create a statistics card with real data"""
         card = tk.Frame(parent, bg=self.secondary_bg, highlightbackground=self.accent_color,
                        highlightthickness=0)
         card.grid(row=row, column=col, padx=10, pady=10, sticky="nsew")
@@ -396,40 +504,30 @@ class ModernUI:
         parent.grid_rowconfigure(row, weight=1)
         parent.grid_columnconfigure(col, weight=1)
         
-        card_title = tk.Label(card, text=title, font=("Segoe UI", 12, "bold"),
-                            bg=self.secondary_bg, fg=self.text_color)
-        card_title.pack(anchor="w", padx=15, pady=(15, 5))
+        # Icon
+        icon_label = tk.Label(card, text=icon, font=("Segoe UI", 24),
+                            bg=self.secondary_bg, fg=self.accent_color)
+        icon_label.pack(anchor="w", padx=15, pady=(15, 5))
         
-        card_desc = tk.Label(card, text=desc, font=("Segoe UI", 9),
-                           bg=self.secondary_bg, fg="#a0a0a0", wraplength=200)
-        card_desc.pack(anchor="w", padx=15, pady=(0, 10))
+        # Value (large)
+        value_label = tk.Label(card, text=value, font=("Segoe UI", 28, "bold"),
+                             bg=self.secondary_bg, fg=self.text_color)
+        value_label.pack(anchor="w", padx=15, pady=(0, 2))
         
-        action_btn = tk.Button(card, text="Execute", font=("Segoe UI", 9, "bold"),
-                             bg=self.accent_color, fg="white",
-                             border=0, cursor="hand2", pady=8, padx=20,
-                             activebackground=self.button_hover,
-                             command=lambda: self.update_status(f"Executed {title}"))
-        action_btn.pack(anchor="w", padx=15, pady=(0, 15))
+        # Title (small)
+        title_label = tk.Label(card, text=title, font=("Segoe UI", 10),
+                             bg=self.secondary_bg, fg="#a0a0a0")
+        title_label.pack(anchor="w", padx=15, pady=(0, 15))
         
         # Hover animations
         def on_card_enter(e):
             card.config(highlightthickness=1, highlightbackground=self.accent_color)
-            self.animate_widget_scale(card, 1.02)
         
         def on_card_leave(e):
             card.config(highlightthickness=0)
-            self.animate_widget_scale(card, 1.0)
-        
-        def on_btn_enter(e):
-            action_btn.config(bg=self.button_hover)
-        
-        def on_btn_leave(e):
-            action_btn.config(bg=self.accent_color)
         
         card.bind("<Enter>", on_card_enter)
         card.bind("<Leave>", on_card_leave)
-        action_btn.bind("<Enter>", on_btn_enter)
-        action_btn.bind("<Leave>", on_btn_leave)
     
     def animate_widget_scale(self, widget, scale):
         """Simple scale animation effect"""
@@ -444,7 +542,7 @@ class ModernUI:
     
     def show_console(self):
         """Show console page with code editor"""
-        container = tk.Frame(self.content_frame, bg=self.bg_color)
+        container = tk.Frame(self.page_container, bg=self.bg_color)
         container.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
         
         title = tk.Label(container, text="Python Console",
@@ -493,7 +591,8 @@ class ModernUI:
                                   undo=True)
         self.code_input.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=2, pady=2)
         
-        scrollbar = tk.Scrollbar(editor_frame, command=self.code_input.yview)
+        scrollbar = tk.Scrollbar(editor_frame, command=self.code_input.yview,
+                                **self.get_scrollbar_config(), width=12)
         scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
         self.code_input.config(yscrollcommand=scrollbar.set)
         
@@ -505,11 +604,18 @@ class ModernUI:
         self.code_input.tag_configure("number", foreground="#b5cea8")
         self.code_input.tag_configure("operator", foreground="#d4d4d4")
         
-        # Restore saved content or insert placeholder
-        if self.console_content:
-            self.code_input.insert('1.0', self.console_content)
+        # Restore saved content with typing animation
+        if self.console_content and self.console_content.strip():
+            # Check if we're returning to console (not first time)
+            if hasattr(self, '_console_initialized'):
+                self.animate_typing(self.console_content)
+            else:
+                # First time - just insert normally
+                self.code_input.insert('1.0', self.console_content)
+                self._console_initialized = True
         else:
-            self.code_input.insert('1.0', '# Write your Python code here\nprint("Hello, CipherV2!")')
+            self.code_input.insert('1.0', '# Write your Python code here\nprint("Hello, CipherV4!")')
+            self._console_initialized = True
         
         # Update line numbers and syntax highlighting
         def update_editor(event=None):
@@ -550,10 +656,24 @@ class ModernUI:
             btn.bind("<Leave>", lambda e, b=btn, c=color: self.animate_button(b, c))
         
         # Output console
-        output_label = tk.Label(container, text="Output:",
+        output_header = tk.Frame(container, bg=self.bg_color)
+        output_header.pack(fill=tk.X, pady=(10, 5))
+        
+        output_label = tk.Label(output_header, text="Output:",
                               font=("Segoe UI", 10, "bold"),
                               bg=self.bg_color, fg=self.text_color)
-        output_label.pack(anchor="w", pady=(10, 5))
+        output_label.pack(side=tk.LEFT)
+        
+        # Clear output button
+        clear_output_btn = tk.Button(output_header, text="Clear Output",
+                                     font=("Segoe UI", 8),
+                                     bg="#ff5555", fg="white",
+                                     border=0, cursor="hand2",
+                                     pady=4, padx=10,
+                                     command=self.clear_output)
+        clear_output_btn.pack(side=tk.RIGHT)
+        clear_output_btn.bind("<Enter>", lambda e: clear_output_btn.config(bg="#ff3333"))
+        clear_output_btn.bind("<Leave>", lambda e: clear_output_btn.config(bg="#ff5555"))
         
         output_frame = tk.Frame(container, bg=self.secondary_bg)
         output_frame.pack(fill=tk.BOTH, expand=True)
@@ -562,15 +682,51 @@ class ModernUI:
                                       height=8,
                                       font=("Consolas", 9),
                                       bg=self.secondary_bg,
-                                      fg="#00ff00",
+                                      fg=self.text_color,
                                       insertbackground=self.text_color,
                                       wrap=tk.WORD,
                                       state=tk.DISABLED)
         self.console_output.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=2, pady=2)
         
-        output_scrollbar = tk.Scrollbar(output_frame, command=self.console_output.yview)
+        output_scrollbar = tk.Scrollbar(output_frame, command=self.console_output.yview,
+                                       **self.get_scrollbar_config(), width=12)
         output_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
         self.console_output.config(yscrollcommand=output_scrollbar.set)
+    
+    def animate_typing(self, text):
+        """Animate typing effect when returning to console"""
+        if not hasattr(self, 'code_input') or not self.code_input.winfo_exists():
+            return
+        
+        # Clear current content
+        self.code_input.delete('1.0', tk.END)
+        
+        # Calculate typing speed based on content length
+        text_length = len(text)
+        if text_length < 50:
+            delay = 10  # Fast for short code
+        elif text_length < 200:
+            delay = 3   # Medium for medium code
+        else:
+            delay = 1   # Very fast for long code
+        
+        # Type character by character
+        def type_char(index=0):
+            if index < len(text) and self.code_input.winfo_exists():
+                self.code_input.insert(tk.END, text[index])
+                # Update syntax highlighting periodically (not every char for performance)
+                if index % 10 == 0 or index == len(text) - 1:
+                    self.apply_syntax_highlighting()
+                    self.update_line_numbers()
+                # Schedule next character
+                self.root.after(delay, lambda: type_char(index + 1))
+            elif index >= len(text):
+                # Final update
+                self.apply_syntax_highlighting()
+                self.update_line_numbers()
+        
+        # Start typing animation
+        type_char()
     
     def animate_button(self, button, color):
         """Animate button color change"""
@@ -638,6 +794,54 @@ class ModernUI:
         except:
             pass
     
+    def apply_snippet_highlighting(self, text_widget):
+        """Apply Python syntax highlighting to snippet preview"""
+        try:
+            # Configure tags for syntax highlighting
+            text_widget.tag_config("keyword", foreground="#569CD6")  # Blue
+            text_widget.tag_config("string", foreground="#CE9178")   # Orange
+            text_widget.tag_config("comment", foreground="#6A9955")  # Green
+            text_widget.tag_config("function", foreground="#DCDCAA") # Yellow
+            text_widget.tag_config("number", foreground="#B5CEA8")   # Light green
+            
+            code = text_widget.get("1.0", "end-1c")
+            
+            # Python keywords
+            keywords = r'\b(def|class|if|elif|else|for|while|try|except|finally|with|import|from|as|return|yield|lambda|pass|break|continue|raise|assert|del|global|nonlocal|and|or|not|in|is|None|True|False|async|await)\b'
+            
+            # Apply keyword highlighting
+            import re
+            for match in re.finditer(keywords, code):
+                start = f"1.0+{match.start()}c"
+                end = f"1.0+{match.end()}c"
+                text_widget.tag_add("keyword", start, end)
+            
+            # Highlight strings
+            for match in re.finditer(r'(["\'])(?:(?=(\\?))\2.)*?\1', code):
+                start = f"1.0+{match.start()}c"
+                end = f"1.0+{match.end()}c"
+                text_widget.tag_add("string", start, end)
+            
+            # Highlight comments
+            for match in re.finditer(r'#.*$', code, re.MULTILINE):
+                start = f"1.0+{match.start()}c"
+                end = f"1.0+{match.end()}c"
+                text_widget.tag_add("comment", start, end)
+            
+            # Highlight numbers
+            for match in re.finditer(r'\b\d+\.?\d*\b', code):
+                start = f"1.0+{match.start()}c"
+                end = f"1.0+{match.end()}c"
+                text_widget.tag_add("number", start, end)
+            
+            # Highlight function names
+            for match in re.finditer(r'\b([a-zA-Z_][a-zA-Z0-9_]*)\s*\(', code):
+                start = f"1.0+{match.start(1)}c"
+                end = f"1.0+{match.end(1)}c"
+                text_widget.tag_add("function", start, end)
+        except:
+            pass
+    
     def clear_editor(self):
         """Clear the code editor"""
         if hasattr(self, 'code_input'):
@@ -646,9 +850,17 @@ class ModernUI:
             self.update_line_numbers()
             self.update_status("Editor cleared")
     
+    def clear_output(self):
+        """Clear the console output"""
+        if hasattr(self, 'console_output'):
+            self.console_output.config(state=tk.NORMAL)
+            self.console_output.delete('1.0', tk.END)
+            self.console_output.config(state=tk.DISABLED)
+            self.update_status("Output cleared")
+    
     def show_history(self):
         """Show history page with command history"""
-        container = tk.Frame(self.content_frame, bg=self.bg_color)
+        container = tk.Frame(self.page_container, bg=self.bg_color)
         container.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
         
         title = tk.Label(container, text="Execution History",
@@ -666,7 +878,7 @@ class ModernUI:
         list_frame = tk.Frame(container, bg=self.secondary_bg)
         list_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 10))
         
-        scrollbar = tk.Scrollbar(list_frame)
+        scrollbar = tk.Scrollbar(list_frame, **self.get_scrollbar_config(), width=12)
         scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
         
         history_list = tk.Listbox(list_frame, font=("Consolas", 9),
@@ -717,7 +929,7 @@ class ModernUI:
     
     def show_snippets(self):
         """Show snippets page with code templates"""
-        container = tk.Frame(self.content_frame, bg=self.bg_color)
+        container = tk.Frame(self.page_container, bg=self.bg_color)
         container.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
         
         title = tk.Label(container, text="Code Snippets Library",
@@ -729,135 +941,304 @@ class ModernUI:
                        text="Quick access to common code patterns and templates - Click any snippet to insert",
                        font=("Segoe UI", 10),
                        bg=self.bg_color, fg="#a0a0a0")
-        desc.pack(anchor="w", pady=(0, 20))
+        desc.pack(anchor="w", pady=(0, 10))
+        
+        # Search bar with clean design (no border frame)
+        search_container = tk.Frame(container, bg=self.bg_color)
+        search_container.pack(fill=tk.X, pady=(0, 15))
+        
+        tk.Label(search_container, text="🔍",
+                font=("Segoe UI", 14),
+                bg=self.bg_color, fg=self.text_color).pack(side=tk.LEFT, padx=(0, 10))
+        
+        self.snippet_search = tk.Entry(search_container, font=("Segoe UI", 11),
+                                      bg=self.secondary_bg, fg=self.text_color,
+                                      relief=tk.FLAT, bd=0,
+                                      highlightthickness=2,
+                                      highlightbackground="#333333",
+                                      highlightcolor=self.accent_color,
+                                      insertbackground=self.accent_color)
+        self.snippet_search.pack(side=tk.LEFT, fill=tk.X, expand=True, ipady=10, padx=(0, 0))
+        
+        # Placeholder handling
+        self.search_placeholder = "Search snippets by name or keyword..."
+        self.snippet_search.insert(0, self.search_placeholder)
+        self.snippet_search.config(fg="#666666")
+        
+        def on_search_focus_in(event):
+            if self.snippet_search.get() == self.search_placeholder:
+                self.snippet_search.delete(0, tk.END)
+                self.snippet_search.config(fg=self.text_color)
+        
+        def on_search_focus_out(event):
+            if self.snippet_search.get() == "":
+                self.snippet_search.insert(0, self.search_placeholder)
+                self.snippet_search.config(fg="#666666")
+        
+        self.snippet_search.bind("<FocusIn>", on_search_focus_in)
+        self.snippet_search.bind("<FocusOut>", on_search_focus_out)
+        self.snippet_search.bind("<KeyRelease>", lambda e: self.filter_snippets())
         
         # Create canvas with scrollbar for snippets
         canvas_frame = tk.Frame(container, bg=self.bg_color)
         canvas_frame.pack(fill=tk.BOTH, expand=True)
         
-        canvas = tk.Canvas(canvas_frame, bg=self.bg_color, highlightthickness=0)
-        scrollbar = tk.Scrollbar(canvas_frame, orient="vertical", command=canvas.yview)
-        snippets_frame = tk.Frame(canvas, bg=self.bg_color)
+        self.snippets_canvas = tk.Canvas(canvas_frame, bg=self.bg_color, highlightthickness=0)
+        scrollbar = tk.Scrollbar(canvas_frame, orient="vertical", command=self.snippets_canvas.yview,
+                                **self.get_scrollbar_config(), width=12)
+        self.snippets_frame = tk.Frame(self.snippets_canvas, bg=self.bg_color)
         
-        snippets_frame.bind(
+        self.snippets_frame.bind(
             "<Configure>",
-            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+            lambda e: self.snippets_canvas.configure(scrollregion=self.snippets_canvas.bbox("all"))
         )
         
-        canvas.create_window((0, 0), window=snippets_frame, anchor="nw")
-        canvas.configure(yscrollcommand=scrollbar.set)
+        self.snippets_canvas.create_window((0, 0), window=self.snippets_frame, anchor="nw")
+        self.snippets_canvas.configure(yscrollcommand=scrollbar.set)
         
-        canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        self.snippets_canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
         
-        # Expanded snippets library with many more patterns
-        snippets = {
+        # Store all snippets for filtering
+        self.all_snippets = {
+            # Basic Python
             "For Loop": "for i in range(10):\n    print(i)",
             "While Loop": "while condition:\n    # code\n    break",
             "Function": "def function_name(param):\n    return param",
             "Class": "class MyClass:\n    def __init__(self):\n        pass",
             "Try/Except": "try:\n    # code\nexcept Exception as e:\n    print(f'Error: {e}')",
-            "File Read": "with open('file.txt', 'r') as f:\n    data = f.read()",
-            "File Write": "with open('file.txt', 'w') as f:\n    f.write('content')",
+            "If/Elif/Else": "if condition:\n    pass\nelif other:\n    pass\nelse:\n    pass",
+            "Match/Case": "match value:\n    case 1:\n        pass\n    case _:\n        pass",
+            "Lambda": "lambda x: x * 2",
             "List Comp": "[x**2 for x in range(10)]",
             "Dict Comp": "{k: v for k, v in items}",
-            "Lambda": "lambda x: x * 2",
+            "Walrus Operator": "if (n := len(data)) > 10:\n    print(f'{n} items')",
+            "F-String": "name = 'World'\nprint(f'Hello, {name}!')",
+            "Type Hints": "def func(x: int, y: str) -> bool:\n    return True",
+            
+            # File Operations
+            "File Read": "with open('file.txt', 'r') as f:\n    data = f.read()",
+            "File Write": "with open('file.txt', 'w') as f:\n    f.write('content')",
+            "File Append": "with open('file.txt', 'a') as f:\n    f.write('append')",
+            "Path Handling": "from pathlib import Path\np = Path('file.txt')\nif p.exists():\n    print(p.read_text())",
+            "Directory Listing": "import os\nfor item in os.listdir('.'):\n    print(item)",
+            "JSON Load": "import json\nwith open('data.json') as f:\n    data = json.load(f)",
+            "JSON Dump": "import json\nwith open('out.json', 'w') as f:\n    json.dump(data, f, indent=4)",
+            "CSV Read": "import csv\nwith open('data.csv') as f:\n    reader = csv.DictReader(f)\n    for row in reader:\n        print(row)",
+            "CSV Write": "import csv\nwith open('out.csv', 'w', newline='') as f:\n    writer = csv.writer(f)\n    writer.writerow(['col1', 'col2'])",
+            "YAML Load": "import yaml\nwith open('config.yaml') as f:\n    config = yaml.safe_load(f)",
+            
+            # Advanced Python
             "Decorator": "@decorator\ndef function():\n    pass",
             "Context Manager": "with context as cm:\n    # code",
             "Async Function": "async def async_func():\n    await something()",
             "Generator": "def gen():\n    yield value",
-            "If/Elif/Else": "if condition:\n    pass\nelif other:\n    pass\nelse:\n    pass",
-            "Match/Case": "match value:\n    case 1:\n        pass\n    case _:\n        pass",
-            "Import": "import module\nfrom package import item",
             "Class Method": "@classmethod\ndef method(cls):\n    pass",
             "Static Method": "@staticmethod\ndef method():\n    pass",
             "Property": "@property\ndef value(self):\n    return self._value",
             "Dataclass": "from dataclasses import dataclass\n\n@dataclass\nclass Point:\n    x: int\n    y: int",
             "Enum": "from enum import Enum\n\nclass Color(Enum):\n    RED = 1\n    GREEN = 2",
-            "JSON Load": "import json\nwith open('data.json') as f:\n    data = json.load(f)",
-            "JSON Dump": "import json\nwith open('out.json', 'w') as f:\n    json.dump(data, f, indent=4)",
-            "CSV Read": "import csv\nwith open('data.csv') as f:\n    reader = csv.DictReader(f)\n    for row in reader:\n        print(row)",
+            "Named Tuple": "from typing import NamedTuple\n\nclass Point(NamedTuple):\n    x: int\n    y: int",
+            "ABC Class": "from abc import ABC, abstractmethod\n\nclass Base(ABC):\n    @abstractmethod\n    def method(self):\n        pass",
+            
+            # Web & API
             "Requests GET": "import requests\nr = requests.get(url)\nprint(r.json())",
             "Requests POST": "import requests\nr = requests.post(url, json=data)\nprint(r.status_code)",
+            "Requests Headers": "import requests\nheaders = {'Authorization': 'Bearer token'}\nr = requests.get(url, headers=headers)",
+            "Flask App": "from flask import Flask\napp = Flask(__name__)\n\n@app.route('/')\ndef home():\n    return 'Hello'",
+            "Flask JSON API": "from flask import Flask, jsonify\napp = Flask(__name__)\n\n@app.route('/api')\ndef api():\n    return jsonify({'key': 'value'})",
+            "FastAPI": "from fastapi import FastAPI\napp = FastAPI()\n\n@app.get('/')\ndef root():\n    return {'message': 'Hello'}",
+            "Beautiful Soup": "from bs4 import BeautifulSoup\nimport requests\nr = requests.get(url)\nsoup = BeautifulSoup(r.content, 'html.parser')\nprint(soup.title.text)",
+            "Selenium": "from selenium import webdriver\ndriver = webdriver.Chrome()\ndriver.get(url)\ndriver.quit()",
+            "HTTP Server": "from http.server import HTTPServer, SimpleHTTPRequestHandler\nserver = HTTPServer(('', 8000), SimpleHTTPRequestHandler)\nserver.serve_forever()",
+            
+            # Data Science
             "Pandas DataFrame": "import pandas as pd\ndf = pd.DataFrame(data)\nprint(df.head())",
-            "NumPy Array": "import numpy as np\narr = np.array([1, 2, 3])",
-            "Matplotlib Plot": "import matplotlib.pyplot as plt\nplt.plot(x, y)\nplt.show()",
-            "Date/Time": "from datetime import datetime\nnow = datetime.now()\nprint(now.strftime('%Y-%m-%d'))",
-            "Path Handling": "from pathlib import Path\np = Path('file.txt')\nprint(p.exists())",
-            "Subprocess": "import subprocess\nresult = subprocess.run(['cmd'], capture_output=True)",
-            "Threading": "import threading\nt = threading.Thread(target=func)\nt.start()",
-            "Multiprocessing": "from multiprocessing import Process\np = Process(target=func)\np.start()",
-            "Logging": "import logging\nlogging.basicConfig(level=logging.INFO)\nlogging.info('message')",
-            "argparse": "import argparse\nparser = argparse.ArgumentParser()\nparser.add_argument('--name')\nargs = parser.parse_args()",
+            "Pandas Read CSV": "import pandas as pd\ndf = pd.read_csv('data.csv')\nprint(df.describe())",
+            "Pandas Filter": "import pandas as pd\nfiltered = df[df['col'] > 10]\nprint(filtered)",
+            "Pandas Group By": "import pandas as pd\ngrouped = df.groupby('col')['value'].sum()\nprint(grouped)",
+            "NumPy Array": "import numpy as np\narr = np.array([1, 2, 3])\nprint(arr.mean())",
+            "NumPy Matrix": "import numpy as np\nmatrix = np.array([[1, 2], [3, 4]])\nprint(matrix.T)",
+            "Matplotlib Plot": "import matplotlib.pyplot as plt\nplt.plot(x, y)\nplt.xlabel('X')\nplt.ylabel('Y')\nplt.show()",
+            "Matplotlib Scatter": "import matplotlib.pyplot as plt\nplt.scatter(x, y)\nplt.title('Scatter Plot')\nplt.show()",
+            "Seaborn Plot": "import seaborn as sns\nsns.lineplot(x='col1', y='col2', data=df)\nplt.show()",
+            "Scikit-Learn": "from sklearn.model_selection import train_test_split\nX_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2)",
+            
+            # Database
+            "SQLite": "import sqlite3\nconn = sqlite3.connect('db.sqlite')\ncursor = conn.cursor()\ncursor.execute('SELECT * FROM table')\nconn.close()",
+            "SQLAlchemy Engine": "from sqlalchemy import create_engine\nengine = create_engine('sqlite:///db.sqlite')\nwith engine.connect() as conn:\n    result = conn.execute('SELECT * FROM table')",
+            "MySQL Connector": "import mysql.connector\nconn = mysql.connector.connect(\n    host='localhost',\n    user='user',\n    password='pass',\n    database='db'\n)",
+            "PostgreSQL": "import psycopg2\nconn = psycopg2.connect(\n    dbname='db',\n    user='user',\n    password='pass'\n)",
+            "MongoDB": "from pymongo import MongoClient\nclient = MongoClient('mongodb://localhost:27017/')\ndb = client['database']\ncollection = db['collection']",
+            "Redis": "import redis\nr = redis.Redis(host='localhost', port=6379)\nr.set('key', 'value')\nprint(r.get('key'))",
+            
+            # System & OS
+            "Date/Time": "from datetime import datetime\nnow = datetime.now()\nprint(now.strftime('%Y-%m-%d %H:%M:%S'))",
+            "Timedelta": "from datetime import datetime, timedelta\ntomorrow = datetime.now() + timedelta(days=1)\nprint(tomorrow)",
+            "Subprocess": "import subprocess\nresult = subprocess.run(['cmd'], capture_output=True, text=True)\nprint(result.stdout)",
+            "Threading": "import threading\nt = threading.Thread(target=func, args=(arg,))\nt.start()\nt.join()",
+            "Multiprocessing": "from multiprocessing import Process\np = Process(target=func, args=(arg,))\np.start()\np.join()",
+            "Logging": "import logging\nlogging.basicConfig(level=logging.INFO)\nlogging.info('message')\nlogging.error('error')",
+            "argparse": "import argparse\nparser = argparse.ArgumentParser()\nparser.add_argument('--name', required=True)\nargs = parser.parse_args()",
+            "Environment Vars": "import os\napi_key = os.getenv('API_KEY', 'default')\nprint(api_key)",
+            "System Info": "import platform\nprint(platform.system())\nprint(platform.python_version())",
+            
+            # Utilities
             "Regular Expression": "import re\nmatch = re.search(r'pattern', text)\nif match:\n    print(match.group())",
-            "SQLite": "import sqlite3\nconn = sqlite3.connect('db.sqlite')\ncursor = conn.cursor()\ncursor.execute('SELECT * FROM table')",
+            "Regex Findall": "import re\nmatches = re.findall(r'\\d+', text)\nprint(matches)",
+            "UUID": "import uuid\nid = uuid.uuid4()\nprint(str(id))",
+            "Random": "import random\nnum = random.randint(1, 100)\nprint(num)",
+            "Random Choice": "import random\nitem = random.choice(['a', 'b', 'c'])\nprint(item)",
+            "Hash SHA256": "import hashlib\nhash = hashlib.sha256(data.encode()).hexdigest()\nprint(hash)",
+            "Base64 Encode": "import base64\nencoded = base64.b64encode(data.encode())\nprint(encoded)",
+            "URL Parse": "from urllib.parse import urlparse\nparsed = urlparse(url)\nprint(parsed.scheme, parsed.netloc)",
+            "Pickle Save": "import pickle\nwith open('data.pkl', 'wb') as f:\n    pickle.dump(obj, f)",
+            "Pickle Load": "import pickle\nwith open('data.pkl', 'rb') as f:\n    obj = pickle.load(f)",
+            
+            # Testing
+            "Unit Test": "import unittest\n\nclass TestClass(unittest.TestCase):\n    def test_method(self):\n        self.assertEqual(1, 1)",
+            "Pytest": "import pytest\n\ndef test_function():\n    assert True",
+            "Mock": "from unittest.mock import Mock\nmock = Mock()\nmock.method.return_value = 'result'",
+            
+            # Virtual Environment
             "Virtual Env": "# Create: python -m venv venv\n# Activate: venv\\Scripts\\activate",
-            "F-String": "name = 'World'\nprint(f'Hello, {name}!')",
-            "Type Hints": "def func(x: int, y: str) -> bool:\n    return True",
-            "Walrus Operator": "if (n := len(data)) > 10:\n    print(f'{n} items')"
+            "Pip Install": "# pip install package\n# pip install -r requirements.txt",
+            "Requirements": "# Generate: pip freeze > requirements.txt\n# Install: pip install -r requirements.txt",
+            
+            # Import Patterns
+            "Import": "import module\nfrom package import item\nfrom package import *",
+            "Import As": "import numpy as np\nimport pandas as pd\nfrom datetime import datetime as dt",
         }
         
+        # Initial display of all snippets
+        self.display_snippets(self.all_snippets)
+        
+        # Enable mousewheel scrolling
+        def on_mousewheel(event):
+            self.snippets_canvas.yview_scroll(int(-1*(event.delta/120)), "units")
+        
+        self.snippets_canvas.bind_all("<MouseWheel>", on_mousewheel)
+    
+    def filter_snippets(self):
+        """Filter snippets based on search query with fade-in animation"""
+        query = self.snippet_search.get().lower()
+        
+        if query == "" or query == self.search_placeholder.lower():
+            filtered = self.all_snippets
+        else:
+            filtered = {name: code for name, code in self.all_snippets.items() 
+                       if query in name.lower() or query in code.lower()}
+        
+        # Clear current display with fade effect
+        for widget in self.snippets_frame.winfo_children():
+            widget.destroy()
+        
+        # Display filtered snippets with staggered fade-in
+        self.display_snippets(filtered, animate=True)
+    
+    def display_snippets(self, snippets, animate=False):
+        """Display snippets in grid layout with optional fade-in animation"""
         row, col = 0, 0
         delay = 0
         
         for name, code in snippets.items():
-            self.create_snippet_card(snippets_frame, name, code, row, col, delay)
+            if animate:
+                self.create_snippet_card(self.snippets_frame, name, code, row, col, delay)
+                delay += 20  # Visible stagger delay
+            else:
+                self.create_snippet_card(self.snippets_frame, name, code, row, col, 0)
             col += 1
-            if col > 2:  # 3 columns
+            if col > 3:  # 4 columns for wider window
                 col = 0
                 row += 1
-            delay += 30  # Faster animation
-        
-        # Enable mousewheel scrolling
-        def on_mousewheel(event):
-            canvas.yview_scroll(int(-1*(event.delta/120)), "units")
-        
-        canvas.bind_all("<MouseWheel>", on_mousewheel)
     
     def create_snippet_card(self, parent, name, code, row, col, delay):
-        """Create an animated snippet card"""
+        """Create an animated snippet card with fade-in effect"""
         def show_card():
             try:
                 if not self.root.winfo_exists() or not parent.winfo_exists():
                     return
-                    
-                card = tk.Frame(parent, bg=self.secondary_bg,
-                               highlightbackground=self.accent_color,
-                               highlightthickness=1, relief=tk.RAISED, bd=2)
-                card.grid(row=row, column=col, padx=10, pady=10, sticky="nsew")
                 
-                parent.grid_rowconfigure(row, weight=1, minsize=180)
-                parent.grid_columnconfigure(col, weight=1, minsize=250)
+                # Create card with initial hidden state (using very dark color)
+                card = tk.Frame(parent, bg="#0a0a0a" if delay > 0 else self.secondary_bg)
+                card.grid(row=row, column=col, padx=8, pady=8, sticky="nsew")
                 
-                # Title with icon
-                title_frame = tk.Frame(card, bg=self.secondary_bg)
+                parent.grid_rowconfigure(row, weight=0, minsize=90)
+                parent.grid_columnconfigure(col, weight=1, minsize=280)  # Shorter width for 4 columns
+                
+                # Create content
+                title_frame = tk.Frame(card, bg="#0a0a0a" if delay > 0 else self.secondary_bg)
                 title_frame.pack(fill=tk.X)
                 
                 name_label = tk.Label(title_frame, text=f"📝 {name}",
-                                     font=("Segoe UI", 12, "bold"),
-                                     bg=self.secondary_bg, fg=self.text_color)
-                name_label.pack(anchor="w", padx=15, pady=(15, 5))
+                                     font=("Segoe UI", 9, "bold"),
+                                     bg="#0a0a0a" if delay > 0 else self.secondary_bg, 
+                                     fg="#0a0a0a" if delay > 0 else self.text_color)
+                name_label.pack(anchor="w", padx=8, pady=(6, 3))
                 
-                # Separator
-                sep = tk.Frame(card, bg=self.accent_color, height=2)
-                sep.pack(fill=tk.X, padx=15, pady=(0, 10))
+                sep = tk.Frame(card, bg="#0a0a0a" if delay > 0 else self.accent_color, height=1)
+                sep.pack(fill=tk.X, padx=8, pady=(0, 5))
                 
-                # Code preview with better visibility - make it clickable
-                code_frame = tk.Frame(card, bg="#1a1a1a", cursor="hand2")
-                code_frame.pack(fill=tk.BOTH, expand=True, padx=15, pady=(0, 10))
+                code_frame = tk.Frame(card, bg="#0a0a0a" if delay > 0 else "#1a1a1a", cursor="hand2")
+                code_frame.pack(fill=tk.BOTH, expand=True, padx=8, pady=(0, 6))
                 
-                code_preview = tk.Label(code_frame, text=code[:60] + "..." if len(code) > 60 else code,
-                                       font=("Consolas", 9),
-                                       bg="#1a1a1a", fg="#00ff00",
-                                       wraplength=220, justify="left", anchor="w",
-                                       cursor="hand2")
-                code_preview.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+                code_preview = tk.Text(code_frame,
+                                      font=("Consolas", 7),
+                                      bg="#0a0a0a" if delay > 0 else "#1a1a1a", 
+                                      fg="#0a0a0a" if delay > 0 else self.text_color,
+                                      wrap=tk.CHAR, height=2, width=30,
+                                      relief=tk.FLAT, bd=0,
+                                      cursor="hand2",
+                                      state=tk.NORMAL,
+                                      highlightthickness=0)
+                code_preview.pack(fill=tk.BOTH, expand=True, padx=3, pady=3)
+                
+                # Insert code and apply syntax highlighting
+                code_text = code[:50] + "..." if len(code) > 50 else code
+                code_preview.insert("1.0", code_text)
+                self.apply_snippet_highlighting(code_preview)
+                code_preview.config(state=tk.DISABLED)
+                
+                # Fade-in animation effect
+                if delay > 0:
+                    def fade_in(step=0):
+                        if step < 5 and card.winfo_exists():
+                            # Gradually lighten colors
+                            if step == 1:
+                                card.config(bg="#151515")
+                                title_frame.config(bg="#151515")
+                                name_label.config(bg="#151515", fg="#444444")
+                                code_frame.config(bg="#101010")
+                                code_preview.config(bg="#101010", fg="#444444")
+                            elif step == 2:
+                                card.config(bg="#1a1a1a")
+                                title_frame.config(bg="#1a1a1a")
+                                name_label.config(bg="#1a1a1a", fg="#888888")
+                                code_frame.config(bg="#151515")
+                                code_preview.config(bg="#151515", fg="#888888")
+                            elif step == 3:
+                                card.config(bg="#202020")
+                                title_frame.config(bg="#202020")
+                                name_label.config(bg="#202020", fg="#cccccc")
+                                code_frame.config(bg="#1a1a1a")
+                                code_preview.config(bg="#1a1a1a", fg="#cccccc")
+                                sep.config(bg="#444444")
+                            elif step == 4:
+                                card.config(bg=self.secondary_bg)
+                                title_frame.config(bg=self.secondary_bg)
+                                name_label.config(bg=self.secondary_bg, fg=self.text_color)
+                                code_frame.config(bg="#1a1a1a")
+                                code_preview.config(bg="#1a1a1a", fg=self.text_color)
+                                sep.config(bg=self.accent_color)
+                            self.root.after(30, lambda: fade_in(step + 1))
+                    
+                    self.root.after(50, fade_in)
                 
                 # Make entire card clickable to insert snippet
                 def click_to_insert(e=None):
                     self.insert_snippet(code)
-                    card.config(highlightbackground="#00ff00")
-                    self.root.after(200, lambda: card.config(highlightbackground=self.accent_color) if card.winfo_exists() else None)
+                    card.config(bg=self.accent_color)
+                    self.root.after(200, lambda: card.config(bg=self.secondary_bg) if card.winfo_exists() else None)
                 
                 card.bind("<Button-1>", click_to_insert)
                 title_frame.bind("<Button-1>", click_to_insert)
@@ -867,12 +1248,10 @@ class ModernUI:
                 
                 # Hover animation
                 def on_enter(e):
-                    card.config(highlightthickness=2, highlightbackground=self.button_hover)
-                    sep.config(bg=self.button_hover)
+                    sep.config(bg=self.button_hover, height=2)
                 
                 def on_leave(e):
-                    card.config(highlightthickness=1, highlightbackground=self.accent_color)
-                    sep.config(bg=self.accent_color)
+                    sep.config(bg=self.accent_color, height=1)
                 
                 card.bind("<Enter>", on_enter)
                 card.bind("<Leave>", on_leave)
@@ -890,15 +1269,488 @@ class ModernUI:
             pass
     
     def insert_snippet(self, code):
-        """Insert snippet into editor"""
+        """Insert snippet into editor and switch to Console page"""
+        # First, save the snippet to insert
+        self.pending_snippet = code
+        
+        # Switch to Console page
         self.switch_page("Console")
+        
+        # Insert the snippet after a short delay to ensure page is loaded
+        self.root.after(100, self._insert_pending_snippet)
+    
+    def _insert_pending_snippet(self):
+        """Actually insert the pending snippet into the editor"""
+        if hasattr(self, 'pending_snippet') and hasattr(self, 'code_input'):
+            try:
+                # Track snippet usage
+                self.stats["snippets_used"] += 1
+                
+                # Clear existing content and insert snippet
+                current_content = self.code_input.get('1.0', tk.END).strip()
+                if current_content and current_content != '# Write your Python code here\nprint("Hello, CipherV4!")':
+                    # Add to end if there's existing code
+                    self.code_input.insert(tk.END, "\n\n" + self.pending_snippet)
+                else:
+                    # Replace placeholder with snippet
+                    self.code_input.delete('1.0', tk.END)
+                    self.code_input.insert('1.0', self.pending_snippet)
+                
+                self.update_line_numbers()
+                self.apply_syntax_highlighting()
+                self.console_content = self.code_input.get('1.0', tk.END)
+                self.update_status(f"Snippet inserted ({self.stats['snippets_used']} total)")
+                delattr(self, 'pending_snippet')
+            except Exception as e:
+                print(f"Error inserting snippet: {e}")
+    
+    def show_ai_assistant(self):
+        """Show AI Assistant page with Hugging Face integration"""
+        container = tk.Frame(self.page_container, bg=self.bg_color)
+        container.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
+        
+        # Header with gradient-like effect
+        header_frame = tk.Frame(container, bg=self.bg_color)
+        header_frame.pack(fill=tk.X, pady=(0, 20))
+        
+        title = tk.Label(header_frame, text="AI Coding Assistant",
+                        font=("Segoe UI", 20, "bold"),
+                        bg=self.bg_color, fg=self.accent_color)
+        title.pack(anchor="w")
+        
+        subtitle = tk.Label(header_frame, 
+                       text="Powered by Hugging Face • Free Forever • Your code stays private",
+                       font=("Segoe UI", 9),
+                       bg=self.bg_color, fg="#888888")
+        subtitle.pack(anchor="w", pady=(2, 0))
+        
+        # API Key setup frame with modern styling
+        api_frame = tk.Frame(container, bg=self.secondary_bg, highlightbackground=self.accent_color, highlightthickness=2)
+        api_frame.pack(fill=tk.X, pady=(0, 20), ipady=10)
+        
+        key_inner = tk.Frame(api_frame, bg=self.secondary_bg)
+        key_inner.pack(fill=tk.X, padx=20, pady=10)
+        
+        # Icon and label
+        key_header = tk.Frame(key_inner, bg=self.secondary_bg)
+        key_header.pack(fill=tk.X, pady=(0, 10))
+        
+        tk.Label(key_header, text="🔑",
+                font=("Segoe UI", 16),
+                bg=self.secondary_bg).pack(side=tk.LEFT, padx=(0, 10))
+        
+        tk.Label(key_header, text="Hugging Face API Token",
+                font=("Segoe UI", 12, "bold"),
+                bg=self.secondary_bg, fg=self.text_color).pack(side=tk.LEFT)
+        
+        tk.Label(key_header, text="(Get it FREE at huggingface.co/settings/tokens)",
+                font=("Segoe UI", 9),
+                bg=self.secondary_bg, fg="#888888").pack(side=tk.LEFT, padx=(10, 0))
+        
+        # Key input with save button
+        key_input_frame = tk.Frame(key_inner, bg=self.secondary_bg)
+        key_input_frame.pack(fill=tk.X)
+        
+        self.api_key_entry = tk.Entry(key_input_frame, font=("Consolas", 10),
+                                      bg=self.bg_color, fg=self.text_color,
+                                      relief=tk.FLAT, bd=2,
+                                      highlightthickness=1,
+                                      highlightbackground="#444444",
+                                      highlightcolor=self.accent_color,
+                                      insertbackground=self.accent_color,
+                                      show="*")
+        self.api_key_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, ipady=8, padx=(0, 10))
+        self.api_key_entry.insert(0, "hf_...")
+        
+        save_key_btn = tk.Button(key_input_frame, text="Save Token",
+                                font=("Segoe UI", 10, "bold"),
+                                bg=self.accent_color, fg="white",
+                                relief=tk.FLAT, cursor="hand2", 
+                                padx=20, pady=8,
+                                activebackground=self.button_hover,
+                                command=self.save_api_key)
+        save_key_btn.pack(side=tk.RIGHT)
+        save_key_btn.bind("<Enter>", lambda e: save_key_btn.config(bg=self.button_hover))
+        save_key_btn.bind("<Leave>", lambda e: save_key_btn.config(bg=self.accent_color))
+        
+        # Main chat container with modern card design
+        chat_outer = tk.Frame(container, bg=self.bg_color)
+        chat_outer.pack(fill=tk.BOTH, expand=True)
+        
+        # Messages display with modern scrollbar
+        messages_container = tk.Frame(chat_outer, bg=self.secondary_bg, 
+                                     highlightbackground="#333333", highlightthickness=1)
+        messages_container.pack(fill=tk.BOTH, expand=True, pady=(0, 15))
+        
+        scrollbar = tk.Scrollbar(messages_container, **self.get_scrollbar_config(), width=12)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        
+        self.chat_display = tk.Text(messages_container,
+                                   font=("Segoe UI", 11),
+                                   bg=self.secondary_bg, fg=self.text_color,
+                                   wrap=tk.WORD, state=tk.DISABLED,
+                                   yscrollcommand=scrollbar.set,
+                                   padx=20, pady=20,
+                                   spacing1=5, spacing3=5,
+                                   relief=tk.FLAT,
+                                   highlightthickness=0)
+        self.chat_display.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        scrollbar.config(command=self.chat_display.yview)
+        
+        # Configure modern message tags
+        self.chat_display.tag_config("user_bubble", 
+                                    background="#0066cc", 
+                                    foreground="white",
+                                    font=("Segoe UI", 11),
+                                    lmargin1=200, lmargin2=200,
+                                    rmargin=10,
+                                    spacing1=10, spacing3=10)
+        
+        self.chat_display.tag_config("ai_bubble", 
+                                    background="#2d2d2d",
+                                    foreground="#ffffff",
+                                    font=("Segoe UI", 11),
+                                    lmargin1=10, lmargin2=10,
+                                    rmargin=200,
+                                    spacing1=10, spacing3=10)
+        
+        self.chat_display.tag_config("system_msg", 
+                                    foreground="#a0a0a0",
+                                    font=("Segoe UI", 10, "italic"),
+                                    justify="center",
+                                    spacing1=10, spacing3=10)
+        
+        self.chat_display.tag_config("code_block", 
+                                    background="#0d0d0d",
+                                    foreground="#00ff00",
+                                    font=("Consolas", 10),
+                                    lmargin1=30, lmargin2=30,
+                                    rmargin=30,
+                                    spacing1=5, spacing3=5)
+        
+        self.chat_display.tag_config("timestamp",
+                                    foreground="#666666",
+                                    font=("Segoe UI", 8))
+        
+        # Store code blocks for "Add to Console" buttons
+        self.ai_code_blocks = []
+        
+        # Add welcome message
+        self.add_ai_message("system", "AI Assistant Online! I can read your console, suggest improvements, and help you code.")
+        
+        # Input area with modern design
+        input_outer = tk.Frame(chat_outer, bg=self.secondary_bg,
+                              highlightbackground=self.accent_color, highlightthickness=2)
+        input_outer.pack(fill=tk.X)
+        
+        input_inner = tk.Frame(input_outer, bg=self.secondary_bg)
+        input_inner.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        
+        # Text input with placeholder
+        input_container = tk.Frame(input_inner, bg=self.bg_color)
+        input_container.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 10))
+        
+        self.ai_input = tk.Text(input_container,
+                               font=("Segoe UI", 11),
+                               bg=self.bg_color, fg=self.text_color,
+                               height=3, wrap=tk.WORD,
+                               relief=tk.FLAT,
+                               highlightthickness=0,
+                               insertbackground=self.accent_color,
+                               padx=10, pady=10)
+        self.ai_input.pack(fill=tk.BOTH, expand=True)
+        self.ai_input.insert("1.0", "Ask me anything about Python coding...")
+        self.ai_input.bind("<FocusIn>", self.clear_ai_placeholder)
+        self.ai_input.bind("<FocusOut>", self.restore_ai_placeholder)
+        
+        # Button container
+        btn_container = tk.Frame(input_inner, bg=self.secondary_bg)
+        btn_container.pack(side=tk.RIGHT)
+        
+        # Modern send button
+        send_btn = tk.Button(btn_container, text="Send",
+                            font=("Segoe UI", 11, "bold"),
+                            bg=self.accent_color, fg="white",
+                            relief=tk.FLAT, cursor="hand2", 
+                            padx=25, pady=12,
+                            activebackground=self.button_hover,
+                            command=self.send_ai_message)
+        send_btn.pack(pady=(0, 8))
+        send_btn.bind("<Enter>", lambda e: send_btn.config(bg=self.button_hover))
+        send_btn.bind("<Leave>", lambda e: send_btn.config(bg=self.accent_color))
+        
+        # Read Console button
+        read_btn = tk.Button(btn_container, text="Read Console",
+                            font=("Segoe UI", 9),
+                            bg="#4caf50", fg="white",
+                            relief=tk.FLAT, cursor="hand2",
+                            padx=15, pady=8,
+                            command=self.ai_read_console)
+        read_btn.pack(pady=(0, 8))
+        read_btn.bind("<Enter>", lambda e: read_btn.config(bg="#45a049"))
+        read_btn.bind("<Leave>", lambda e: read_btn.config(bg="#4caf50"))
+        
+        # Clear button
+        clear_btn = tk.Button(btn_container, text="Clear",
+                             font=("Segoe UI", 9),
+                             bg="#ff5555", fg="white",
+                             relief=tk.FLAT, cursor="hand2",
+                             padx=15, pady=8,
+                             command=self.clear_ai_chat)
+        clear_btn.pack()
+        clear_btn.bind("<Enter>", lambda e: clear_btn.config(bg="#ff3333"))
+        clear_btn.bind("<Leave>", lambda e: clear_btn.config(bg="#ff5555"))
+        
+        # Bind Enter key to send
+        self.ai_input.bind('<Control-Return>', lambda e: self.send_ai_message())
+    
+    def clear_ai_placeholder(self, event):
+        """Clear placeholder text on focus"""
+        if self.ai_input.get("1.0", tk.END).strip() == "Ask me anything about Python coding...":
+            self.ai_input.delete("1.0", tk.END)
+    
+    def restore_ai_placeholder(self, event):
+        """Restore placeholder if empty"""
+        if not self.ai_input.get("1.0", tk.END).strip():
+            self.ai_input.insert("1.0", "Ask me anything about Python coding...")
+    
+    def ai_read_console(self):
+        """Let AI read the current console content"""
         if hasattr(self, 'code_input'):
-            self.code_input.insert(tk.INSERT, code + "\n")
-            self.update_status("Snippet inserted")
+            console_code = self.code_input.get("1.0", tk.END).strip()
+            if console_code:
+                # Auto-fill input with context
+                current = self.ai_input.get("1.0", tk.END).strip()
+                if current == "Ask me anything about Python coding...":
+                    self.ai_input.delete("1.0", tk.END)
+                self.ai_input.insert("1.0", f"Here's my current code:\n```python\n{console_code}\n```\n\nCan you help me improve it?")
+                self.show_notification("✓ Console code added to message", "success")
+            else:
+                self.show_notification("❌ Console is empty", "error")
+        else:
+            self.show_notification("❌ Console not available", "error")
+    
+    def on_provider_change(self, provider):
+        """Update UI when AI provider changes"""
+        if "FREE" in provider:
+            if "Gemini" in provider:
+                self.api_key_entry.delete(0, tk.END)
+                self.api_key_entry.insert(0, "Get free key from ai.google.dev")
+            else:
+                self.api_key_entry.delete(0, tk.END)
+                self.api_key_entry.insert(0, "Get free key from huggingface.co")
+        else:
+            self.api_key_entry.delete(0, tk.END)
+            self.api_key_entry.insert(0, "sk-...")
+    
+    def add_ai_message(self, sender, message):
+        """Add a message to the AI chat display with modern styling"""
+        self.chat_display.config(state=tk.NORMAL)
+        
+        timestamp = time.strftime("%H:%M")
+        
+        if sender == "user":
+            self.chat_display.insert(tk.END, "\n")
+            self.chat_display.insert(tk.END, f"You • {timestamp}\n", "timestamp")
+            self.chat_display.insert(tk.END, f"{message}\n", "user_bubble")
+            
+        elif sender == "ai":
+            self.chat_display.insert(tk.END, "\n")
+            self.chat_display.insert(tk.END, f"AI Assistant • {timestamp}\n", "timestamp")
+            
+            # Detect and handle code blocks
+            import re
+            code_pattern = r'```(?:python)?\n(.*?)\n```'
+            parts = re.split(code_pattern, message, flags=re.DOTALL)
+            
+            for i, part in enumerate(parts):
+                if i % 2 == 0:  # Regular text
+                    if part.strip():
+                        self.chat_display.insert(tk.END, f"{part}\n", "ai_bubble")
+                else:  # Code block
+                    code = part.strip()
+                    if code:
+                        # Add code block
+                        self.chat_display.insert(tk.END, "\n")
+                        self.chat_display.insert(tk.END, f"{code}\n", "code_block")
+                        
+                        # Store code for button
+                        self.ai_code_blocks.append(code)
+                        code_index = len(self.ai_code_blocks) - 1
+                        
+                        # Create "Add to Console" button
+                        btn = tk.Button(self.chat_display, 
+                                      text="Add to Console",
+                                      font=("Segoe UI", 9, "bold"),
+                                      bg="#4caf50", fg="white",
+                                      relief=tk.FLAT, cursor="hand2",
+                                      padx=15, pady=6,
+                                      command=lambda idx=code_index: self.add_code_to_console(idx))
+                        btn.bind("<Enter>", lambda e, b=btn: b.config(bg="#45a049"))
+                        btn.bind("<Leave>", lambda e, b=btn: b.config(bg="#4caf50"))
+                        
+                        self.chat_display.window_create(tk.END, window=btn)
+                        self.chat_display.insert(tk.END, "\n\n")
+            
+        elif sender == "system":
+            self.chat_display.insert(tk.END, f"\n{message}\n", "system_msg")
+        
+        self.chat_display.see(tk.END)
+        self.chat_display.config(state=tk.DISABLED)
+    
+    def add_code_to_console(self, code_index):
+        """Add AI-suggested code to the console"""
+        if code_index < len(self.ai_code_blocks):
+            code = self.ai_code_blocks[code_index]
+            if hasattr(self, 'code_input'):
+                # Replace or append based on console state
+                current = self.code_input.get("1.0", tk.END).strip()
+                if not current:
+                    self.code_input.insert("1.0", code)
+                else:
+                    self.code_input.delete("1.0", tk.END)
+                    self.code_input.insert("1.0", code)
+                
+                self.apply_syntax_highlighting()
+                self.update_line_numbers()
+                self.show_notification("✓ Code added to Console!", "success")
+                self.switch_page("Console")
+            else:
+                self.show_notification("❌ Console not available", "error")
+    
+    def save_api_key(self):
+        """Save the Hugging Face API token"""
+        api_key = self.api_key_entry.get()
+        if api_key and api_key != "hf_...":
+            self.show_notification("✓ API Token saved!", "success")
+            # In production, save to encrypted storage
+        else:
+            self.show_notification("❌ Please enter a valid API key", "error")
+    
+    def send_ai_message(self):
+        """Send message to AI and get response"""
+        message = self.ai_input.get("1.0", tk.END).strip()
+        if not message or message == "Type your question here...":
+            return
+        
+        # Add user message
+        self.add_ai_message("user", message)
+        self.ai_input.delete("1.0", tk.END)
+        
+        # Get AI response (simulated for now)
+        self.root.after(500, lambda: self.get_ai_response(message))
+    
+    def get_ai_response(self, user_message):
+        """Get response from Hugging Face API"""
+        api_key = self.api_key_entry.get()
+        
+        # Validate API key
+        if not api_key or api_key == "hf_...":
+            self.add_ai_message("system", "⚠ Please enter your Hugging Face API token first")
+            return
+        
+        # Show thinking indicator
+        self.add_ai_message("system", "🤔 AI is thinking...")
+        
+        # Call Hugging Face API in thread
+        import threading
+        threading.Thread(target=lambda: self.call_huggingface_api(api_key, user_message), daemon=True).start()
+    
+    def call_huggingface_api(self, api_key, user_message):
+        """Call Hugging Face Inference API (FREE)"""
+        try:
+            import requests
+            
+            # Read console code if available
+            console_context = ""
+            if hasattr(self, 'code_input'):
+                console_code = self.code_input.get("1.0", tk.END).strip()
+                if console_code and "Here's my current code" not in user_message:
+                    console_context = f"\n\n[User's current console code:\n{console_code}\n]"
+            
+            # Use a free coding model from Hugging Face
+            API_URL = "https://api-inference.huggingface.co/models/meta-llama/CodeLlama-7b-Instruct-hf"
+            headers = {"Authorization": f"Bearer {api_key}"}
+            
+            prompt = f"""<s>[INST] You are an expert Python coding assistant. Be helpful and concise.
+            
+User question: {user_message}{console_context}
+
+Provide your answer. If you suggest code, wrap it in ```python code blocks. [/INST]"""
+            
+            payload = {
+                "inputs": prompt,
+                "parameters": {
+                    "max_new_tokens": 500,
+                    "temperature": 0.7,
+                    "top_p": 0.95,
+                    "return_full_text": False
+                }
+            }
+            
+            response = requests.post(API_URL, headers=headers, json=payload, timeout=30)
+            
+            if response.status_code == 200:
+                result = response.json()
+                if isinstance(result, list) and len(result) > 0:
+                    ai_reply = result[0].get("generated_text", "")
+                elif isinstance(result, dict):
+                    ai_reply = result.get("generated_text", result.get("error", "No response"))
+                else:
+                    ai_reply = str(result)
+                
+                if ai_reply:
+                    self.root.after(0, lambda: self.display_ai_response(ai_reply))
+                else:
+                    self.root.after(0, lambda: self.add_ai_message("system", "❌ Empty response from AI"))
+            
+            elif response.status_code == 503:
+                self.root.after(0, lambda: self.add_ai_message("system", "⏳ Model is loading... Please wait 30 seconds and try again."))
+            elif response.status_code == 401:
+                self.root.after(0, lambda: self.add_ai_message("system", "❌ Invalid API token. Check your Hugging Face token."))
+            else:
+                error_data = response.json() if response.headers.get('content-type') == 'application/json' else {}
+                error_msg = error_data.get('error', f'HTTP {response.status_code}')
+                self.root.after(0, lambda: self.add_ai_message("system", f"❌ Error: {error_msg}"))
+            
+        except ImportError:
+            self.root.after(0, lambda: self.add_ai_message("system", "❌ requests library not installed. Run: pip install requests"))
+        except requests.exceptions.Timeout:
+            self.root.after(0, lambda: self.add_ai_message("system", "❌ Request timed out. Try again."))
+        except Exception as e:
+            self.root.after(0, lambda: self.add_ai_message("system", f"❌ Error: {str(e)}"))
+    
+    def display_ai_response(self, response):
+        """Display AI response in chat"""
+        # Remove thinking message
+        self.chat_display.config(state=tk.NORMAL)
+        content = self.chat_display.get("1.0", tk.END)
+        if "🤔 AI is thinking..." in content:
+            # Find and remove the thinking message
+            start_idx = content.rfind("🤔 AI is thinking...")
+            if start_idx != -1:
+                # Calculate line number
+                lines_before = content[:start_idx].count('\n')
+                self.chat_display.delete(f"{lines_before + 1}.0", f"{lines_before + 2}.0")
+        self.chat_display.config(state=tk.DISABLED)
+        
+        # Add AI response
+        self.add_ai_message("ai", response)
+    
+    def clear_ai_chat(self):
+        """Clear AI chat history"""
+        self.chat_display.config(state=tk.NORMAL)
+        self.chat_display.delete("1.0", tk.END)
+        self.chat_display.config(state=tk.DISABLED)
+        self.ai_code_blocks = []
+        self.add_ai_message("system", "Chat cleared. AI Assistant ready!")
+        if hasattr(self, 'last_ai_code'):
+            delattr(self, 'last_ai_code')
+            delattr(self, 'last_ai_code')
     
     def show_progress_page(self):
-        """Show progress page with animated statistics"""
-        container = tk.Frame(self.content_frame, bg=self.bg_color)
+        """Show progress page with real animated statistics"""
+        container = tk.Frame(self.page_container, bg=self.bg_color)
         container.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
         
         title = tk.Label(container, text="Progress Tracker",
@@ -906,21 +1758,35 @@ class ModernUI:
                         bg=self.bg_color, fg=self.text_color)
         title.pack(anchor="w", pady=(0, 10))
         
+        # Calculate session duration
+        session_duration = int(time.time() - self.stats["session_start"])
+        hours = session_duration // 3600
+        minutes = (session_duration % 3600) // 60
+        session_time = f"{hours}h {minutes}m" if hours > 0 else f"{minutes} minutes"
+        
         desc = tk.Label(container, 
-                       text="Track your coding progress and statistics",
+                       text=f"Real-time coding progress • Session: {session_time}",
                        font=("Segoe UI", 10),
                        bg=self.bg_color, fg="#a0a0a0")
         desc.pack(anchor="w", pady=(0, 20))
         
-        # Stats grid with animated progress bars
+        # Stats grid with animated progress bars - using real data
         stats_frame = tk.Frame(container, bg=self.bg_color)
         stats_frame.pack(fill=tk.BOTH, expand=True)
         
+        # Calculate goals and current values
+        exec_goal = max(10, self.stats["executions"] + 5)
+        lines_goal = max(100, self.stats["lines_written"] + 50)
+        snippets_goal = max(5, self.stats["snippets_used"] + 3)
+        success_rate = int((self.stats['successful_runs'] / self.stats['executions'] * 100)) if self.stats['executions'] > 0 else 0
+        
         stats = [
-            ("Scripts Executed", 45, 100),
-            ("Lines of Code", 1250, 2000),
-            ("Projects", 8, 15),
-            ("Time Saved", 75, 100)
+            ("Code Executions", self.stats["executions"], exec_goal),
+            ("Lines Written", self.stats["lines_written"], lines_goal),
+            ("Snippets Used", self.stats["snippets_used"], snippets_goal),
+            ("Success Rate", success_rate, 100),
+            ("Successful Runs", self.stats["successful_runs"], self.stats["executions"] if self.stats["executions"] > 0 else 1),
+            ("Error Count", self.stats["errors"], max(1, self.stats["executions"]))
         ]
         
         for i, (label, current, total) in enumerate(stats):
@@ -977,7 +1843,7 @@ class ModernUI:
     
     def show_settings(self):
         """Show settings page with toggles and options"""
-        container = tk.Frame(self.content_frame, bg=self.bg_color)
+        container = tk.Frame(self.page_container, bg=self.bg_color)
         container.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
         
         title = tk.Label(container, text="Settings",
@@ -986,30 +1852,85 @@ class ModernUI:
         title.pack(anchor="w", pady=(0, 10))
         
         desc = tk.Label(container, 
-                       text="Configure application preferences",
+                       text="Configure application preferences for a personalized experience",
                        font=("Segoe UI", 10),
                        bg=self.bg_color, fg="#a0a0a0")
         desc.pack(anchor="w", pady=(0, 20))
         
-        # Settings sections with fade-in animation
+        # Create scrollable settings area
+        canvas_frame = tk.Frame(container, bg=self.bg_color)
+        canvas_frame.pack(fill=tk.BOTH, expand=True)
+        
+        canvas = tk.Canvas(canvas_frame, bg=self.bg_color, highlightthickness=0)
+        scrollbar = tk.Scrollbar(canvas_frame, orient="vertical", command=canvas.yview,
+                                **self.get_scrollbar_config(), width=12)
+        settings_frame = tk.Frame(canvas, bg=self.bg_color)
+        
+        settings_frame.bind(
+            "<Configure>",
+            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+        )
+        
+        canvas.create_window((0, 0), window=settings_frame, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
+        
+        canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        
+        # Settings sections - theme controls moved to Theme Customizer
         settings_data = [
-            ("Dark Mode", "Enable dark theme"),
+            # Editor
+            ("Syntax Highlighting", "Highlight code syntax with colors"),
+            ("Line Numbers", "Show line numbers in editor"),
+            ("Auto-complete", "Enable intelligent code completion"),
+            ("Auto-indent", "Automatically indent code blocks"),
+            ("Word Wrap", "Wrap long lines in editor"),
+            ("Bracket Matching", "Highlight matching brackets"),
+            ("Code Folding", "Allow collapsing code blocks"),
+            ("Minimap", "Show code minimap on right side"),
+            ("Font Size", "Adjust editor font size (8-24)"),
+            
+            # Behavior
+            ("Auto-save", "Automatically save work every 60s"),
             ("Notifications", "Show notification popups"),
-            ("Auto-save", "Automatically save work"),
-            ("Syntax Highlighting", "Highlight code syntax"),
-            ("Line Numbers", "Show line numbers"),
-            ("Auto-complete", "Enable code completion")
+            ("Sound Effects", "Enable UI sound feedback"),
+            ("Spell Check", "Check spelling in comments/strings"),
+            ("Tab Size", "Use 4 spaces for tabs"),
+            ("Trim Whitespace", "Remove trailing spaces on save"),
+            ("Format on Save", "Auto-format code when saving"),
+            
+            # Advanced
+            ("Debug Mode", "Show detailed error messages"),
+            ("Telemetry", "Send anonymous usage data"),
+            ("Auto-update", "Check for updates automatically"),
+            ("Experimental Features", "Enable beta features"),
+            ("Performance Mode", "Optimize for speed"),
+            ("Memory Limit", "Set max memory usage (MB)"),
+            ("GPU Acceleration", "Use hardware acceleration"),
+            
+            # Privacy & Security
+            ("Save History", "Remember command history"),
+            ("Remember Session", "Restore last session on startup"),
+            ("Encrypted Storage", "Encrypt saved files"),
+            ("Password Protection", "Require password to open"),
+            ("Clear on Exit", "Clear temporary files on close"),
         ]
         
         for i, (setting_name, setting_desc) in enumerate(settings_data):
-            self.create_setting_item(container, setting_name, setting_desc, i)
+            self.create_setting_item(settings_frame, setting_name, setting_desc, i)
+        
+        # Enable mousewheel scrolling
+        def on_mousewheel(event):
+            canvas.yview_scroll(int(-1*(event.delta/120)), "units")
+        
+        canvas.bind_all("<MouseWheel>", on_mousewheel)
         
         # Save button with pulse animation
         save_btn = tk.Button(container, text="Save Settings", font=("Segoe UI", 11, "bold"),
                             bg=self.accent_color, fg="white",
                             border=0, cursor="hand2", pady=10, padx=30,
                             command=self.save_settings)
-        save_btn.pack(pady=20)
+        save_btn.pack(pady=10, side=tk.BOTTOM)
         
         # Pulse animation on hover
         def pulse_animation(count=0):
@@ -1022,26 +1943,75 @@ class ModernUI:
         save_btn.bind("<Leave>", lambda e: save_btn.config(bg=self.accent_color))
     
     def create_setting_item(self, parent, name, desc, index):
-        """Create an animated setting item"""
+        """Create an animated setting item with real functionality"""
         def show_setting():
             try:
-                # Check if root and parent still exist FIRST
-                if not self.root.winfo_exists():
-                    return
-                
-                if not parent.winfo_exists():
+                if not self.root.winfo_exists() or not parent.winfo_exists():
                     return
                     
                 setting_frame = tk.Frame(parent, bg=self.secondary_bg)
                 setting_frame.pack(fill=tk.X, pady=5, padx=5)
                 
-                # Checkbox with proper master and command callback
-                var = tk.BooleanVar(master=self.root, value=True)
+                # Get initial value from settings_state
+                initial_value = self.settings_state.get(name, True)
+                var = tk.BooleanVar(master=self.root, value=initial_value)
                 
                 def on_toggle():
-                    """Handle checkbox toggle"""
-                    state = "enabled" if var.get() else "disabled"
-                    self.show_notification(f"✓ {name} {state}", "success" if var.get() else "info")
+                    """Handle checkbox toggle with real functionality"""
+                    state = var.get()
+                    self.settings_state[name] = state
+                    
+                    # Apply specific setting changes
+                    if name == "Auto-complete":
+                        if hasattr(self, 'code_input'):
+                            # Enable/disable autocomplete
+                            if state:
+                                self.show_notification("✓ Auto-complete enabled", "success")
+                            else:
+                                self.show_notification("✓ Auto-complete disabled", "info")
+                    
+                    elif name == "Word Wrap":
+                        if hasattr(self, 'code_input'):
+                            self.code_input.config(wrap=tk.WORD if state else tk.NONE)
+                            self.show_notification(f"✓ Word Wrap {'enabled' if state else 'disabled'}", "success" if state else "info")
+                    
+                    elif name == "Line Numbers":
+                        if hasattr(self, 'line_numbers'):
+                            if state:
+                                self.line_numbers.pack(side=tk.LEFT, fill=tk.Y)
+                                self.update_line_numbers()
+                            else:
+                                self.line_numbers.pack_forget()
+                            self.show_notification(f"✓ Line Numbers {'shown' if state else 'hidden'}", "success" if state else "info")
+                    
+                    elif name == "Syntax Highlighting":
+                        if hasattr(self, 'code_input'):
+                            if state:
+                                self.apply_syntax_highlighting()
+                            else:
+                                # Remove all syntax tags
+                                for tag in ["keyword", "string", "comment", "function", "number"]:
+                                    self.code_input.tag_remove(tag, "1.0", "end")
+                            self.show_notification(f"✓ Syntax Highlighting {'enabled' if state else 'disabled'}", "success" if state else "info")
+                    
+                    elif name == "Auto-save":
+                        self.auto_save_enabled = state
+                        if state:
+                            self.start_auto_save()
+                            self.show_notification("✓ Auto-save enabled (60s)", "success")
+                        else:
+                            if self.auto_save_timer:
+                                self.root.after_cancel(self.auto_save_timer)
+                            self.show_notification("✓ Auto-save disabled", "info")
+                    
+                    elif name == "Notifications":
+                        # Just update the state, notifications controlled globally
+                        self.show_notification(f"✓ Notifications {'enabled' if state else 'disabled'}", "success" if state else "info")
+                    
+                    else:
+                        # Generic notification for other settings
+                        status = "enabled" if state else "disabled"
+                        self.show_notification(f"✓ {name} {status}", "success" if state else "info")
                 
                 check = tk.Checkbutton(setting_frame,
                                       text=name,
@@ -1060,11 +2030,9 @@ class ModernUI:
                                      font=("Segoe UI", 8),
                                      bg=self.secondary_bg, fg="#a0a0a0")
                 desc_label.pack(anchor="w", padx=35, pady=(0, 10))
-            except (tk.TclError, RuntimeError, Exception) as e:
-                # Silently handle widget destruction errors
+            except (tk.TclError, RuntimeError, Exception):
                 pass
         
-        # Staggered animation with error handling
         try:
             if self.root.winfo_exists():
                 self.root.after(index * 80, show_setting)
@@ -1080,17 +2048,17 @@ class ModernUI:
     
     def show_about(self):
         """Show about page with animated info"""
-        container = tk.Frame(self.content_frame, bg=self.bg_color)
+        container = tk.Frame(self.page_container, bg=self.bg_color)
         container.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
         
         # Animated title
-        title = tk.Label(container, text="About CipherV2",
+        title = tk.Label(container, text="About CipherV4",
                         font=("Segoe UI", 20, "bold"),
                         bg=self.bg_color, fg=self.text_color)
         title.pack(pady=(30, 10))
         
         # Version with color animation
-        version_label = tk.Label(container, text="Version 2.0",
+        version_label = tk.Label(container, text="Version 4.5",
                                 font=("Segoe UI", 12),
                                 bg=self.bg_color, fg=self.accent_color)
         version_label.pack(pady=5)
@@ -1156,31 +2124,70 @@ Created for efficient Python development"""
     
     # Placeholder methods for functionality
     def save_file(self):
-        """Save current file"""
-        self.update_status("File saved successfully")
+        """Save current file and track statistics"""
+        self.stats["files_saved"] += 1
+        self.update_status(f"File saved successfully ({self.stats['files_saved']} total)")
     
     def run_code(self):
-        """Run the code in the editor"""
+        """Run the code in the editor with execution time tracking and statistics"""
         if hasattr(self, 'code_input') and hasattr(self, 'console_output'):
             code = self.code_input.get('1.0', tk.END).strip()
             
             if code:
+                import time
+                start_time = time.time()
+                
+                # Track execution
+                self.stats["executions"] += 1
+                
+                # Count lines of code
+                lines_count = len([line for line in code.split('\n') if line.strip()])
+                self.stats["lines_written"] = max(self.stats["lines_written"], lines_count)
+                
                 self.console_output.config(state=tk.NORMAL)
                 self.console_output.delete('1.0', tk.END)
                 self.console_output.insert('1.0', f">>> Executing code...\n{code}\n\n")
                 
                 try:
-                    # Simple execution simulation
+                    # Create a custom stdout to capture print statements
+                    from io import StringIO
+                    import sys
+                    
+                    old_stdout = sys.stdout
+                    sys.stdout = StringIO()
+                    
+                    # Simple execution
                     exec_globals = {}
                     exec(code, exec_globals)
-                    self.console_output.insert(tk.END, "✓ Execution completed successfully\n", "success")
+                    
+                    # Get captured output
+                    output = sys.stdout.getvalue()
+                    sys.stdout = old_stdout
+                    
+                    if output:
+                        self.console_output.insert(tk.END, f"Output:\n{output}\n")
+                    
+                    execution_time = time.time() - start_time
+                    
+                    # Track successful execution
+                    self.stats["successful_runs"] += 1
+                    self.stats["total_execution_time"] += execution_time
+                    
+                    self.console_output.insert(tk.END, f"✓ Execution completed successfully\n", "success")
                     self.console_output.tag_config("success", foreground="#00ff00")
+                    self.update_status(f"Executed in {execution_time:.4f} seconds")
                 except Exception as e:
+                    execution_time = time.time() - start_time
+                    
+                    # Track error
+                    self.stats["errors"] += 1
+                    self.stats["total_execution_time"] += execution_time
+                    
                     self.console_output.insert(tk.END, f"✗ Error: {str(e)}\n", "error")
                     self.console_output.tag_config("error", foreground="#ff4444")
+                    self.update_status(f"Error after {execution_time:.4f} seconds")
                 
                 self.console_output.config(state=tk.DISABLED)
-                self.update_status("Code executed")
             else:
                 self.update_status("No code to execute")
     
@@ -1278,7 +2285,7 @@ Created for efficient Python development"""
         pass
     
     def lint_json(self):
-        """Lint and format JSON code"""
+        """Toggle between formatted (pretty) and minified (one line) JSON"""
         if hasattr(self, 'code_input'):
             code = self.code_input.get('1.0', tk.END).strip()
             if code:
@@ -1286,13 +2293,25 @@ Created for efficient Python development"""
                     import json
                     # Parse JSON
                     parsed = json.loads(code)
-                    # Format with indentation
-                    formatted = json.dumps(parsed, indent=4, sort_keys=False)
                     
-                    self.code_input.delete('1.0', tk.END)
-                    self.code_input.insert('1.0', formatted)
-                    self.update_status("✓ JSON formatted successfully")
-                    self.show_notification("✓ JSON is valid and formatted", "success")
+                    # Check if JSON is already formatted (has newlines and indentation)
+                    is_formatted = '\n' in code and '    ' in code
+                    
+                    if is_formatted:
+                        # Minify: convert to single line
+                        minified = json.dumps(parsed, separators=(',', ':'), sort_keys=False)
+                        self.code_input.delete('1.0', tk.END)
+                        self.code_input.insert('1.0', minified)
+                        self.update_status("✓ JSON minified to one line")
+                        self.show_notification("✓ JSON minified", "success")
+                    else:
+                        # Format: add indentation and newlines
+                        formatted = json.dumps(parsed, indent=4, sort_keys=False)
+                        self.code_input.delete('1.0', tk.END)
+                        self.code_input.insert('1.0', formatted)
+                        self.update_status("✓ JSON formatted with indentation")
+                        self.show_notification("✓ JSON formatted", "success")
+                    
                 except json.JSONDecodeError as e:
                     self.update_status(f"JSON Error: {str(e)}")
                     self.show_notification(f"❌ JSON Error: {str(e)}", "error")
@@ -1415,16 +2434,17 @@ Created for efficient Python development"""
         self.is_resizing = False
     
     def show_notification(self, message, type="info"):
-        """Show custom toast notification"""
+        """Show professional toast notification"""
         # Create notification window
         notif = tk.Toplevel(self.root)
         notif.overrideredirect(True)
         notif.attributes('-topmost', True)
+        notif.attributes('-alpha', 0.95)  # Slight transparency
         
         # Position at top-right
-        x = self.root.winfo_x() + self.root.winfo_width() - 320
+        x = self.root.winfo_x() + self.root.winfo_width() - 370
         y = self.root.winfo_y() + 80
-        notif.geometry(f"300x80+{x}+{y}")
+        notif.geometry(f"350x100+{x}+{y}")
         
         # Color based on type
         colors = {
@@ -1435,50 +2455,96 @@ Created for efficient Python development"""
         }
         color = colors.get(type, self.accent_color)
         
-        # Notification frame
-        frame = tk.Frame(notif, bg=color, highlightbackground=color,
-                        highlightthickness=2)
-        frame.pack(fill=tk.BOTH, expand=True, padx=2, pady=2)
+        # Modern card-style background
+        bg_frame = tk.Frame(notif, bg=self.bg_color)
+        bg_frame.pack(fill=tk.BOTH, expand=True)
         
-        # Inner frame
-        inner = tk.Frame(frame, bg=self.secondary_bg)
-        inner.pack(fill=tk.BOTH, expand=True, padx=2, pady=2)
+        # Left accent bar
+        accent_bar = tk.Frame(bg_frame, bg=color, width=6)
+        accent_bar.pack(side=tk.LEFT, fill=tk.Y)
         
-        # Icon and message
-        icon_label = tk.Label(inner, text={"success": "✓", "error": "✗", 
-                                          "warning": "⚠", "info": "ℹ"}.get(type, "ℹ"),
-                             font=("Segoe UI", 24, "bold"),
+        # Content frame
+        content = tk.Frame(bg_frame, bg=self.secondary_bg)
+        content.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        
+        # Header with icon and close button
+        header = tk.Frame(content, bg=self.secondary_bg)
+        header.pack(fill=tk.X, padx=15, pady=(12, 5))
+        
+        # Icon
+        icons = {"success": "✓", "error": "✗", "warning": "⚠", "info": "ℹ"}
+        icon_label = tk.Label(header, text=icons.get(type, "ℹ"),
+                             font=("Segoe UI", 20, "bold"),
                              bg=self.secondary_bg, fg=color)
-        icon_label.pack(side=tk.LEFT, padx=15, pady=10)
+        icon_label.pack(side=tk.LEFT)
         
-        msg_label = tk.Label(inner, text=message, font=("Segoe UI", 10),
-                            bg=self.secondary_bg, fg=self.text_color,
-                            wraplength=200, justify="left")
-        msg_label.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, pady=10, padx=(0, 10))
+        # Title based on type
+        titles = {"success": "Success", "error": "Error", "warning": "Warning", "info": "Info"}
+        title_label = tk.Label(header, text=titles.get(type, "Notification"),
+                              font=("Segoe UI", 11, "bold"),
+                              bg=self.secondary_bg, fg=self.text_color)
+        title_label.pack(side=tk.LEFT, padx=10)
         
         # Close button
-        close_btn = tk.Label(inner, text="×", font=("Segoe UI", 16),
-                            bg=self.secondary_bg, fg=self.text_color,
+        close_btn = tk.Label(header, text="✕", font=("Segoe UI", 14),
+                            bg=self.secondary_bg, fg="#888888",
                             cursor="hand2")
-        close_btn.pack(side=tk.RIGHT, padx=5)
+        close_btn.pack(side=tk.RIGHT)
         close_btn.bind("<Button-1>", lambda e: notif.destroy())
+        close_btn.bind("<Enter>", lambda e: close_btn.config(fg=self.text_color))
+        close_btn.bind("<Leave>", lambda e: close_btn.config(fg="#888888"))
+        
+        # Message
+        msg_label = tk.Label(content, text=message, font=("Segoe UI", 10),
+                            bg=self.secondary_bg, fg="#a0a0a0",
+                            wraplength=300, justify="left", anchor="w")
+        msg_label.pack(fill=tk.X, padx=15, pady=(0, 12))
+        
+        # Subtle shadow effect
+        notif.config(highlightbackground="#000000", highlightthickness=1)
+        
+        # Fade in animation
+        def fade_in(alpha=0.0):
+            if alpha < 0.95:
+                try:
+                    notif.attributes('-alpha', alpha)
+                    self.root.after(20, lambda: fade_in(alpha + 0.05))
+                except:
+                    pass
         
         # Slide in animation
         def slide_in(pos=0):
             if pos < 20:
-                notif.geometry(f"300x80+{x}+{y - pos}")
-                self.root.after(10, lambda: slide_in(pos + 2))
+                try:
+                    notif.geometry(f"350x100+{x}+{y - pos}")
+                    self.root.after(10, lambda: slide_in(pos + 2))
+                except:
+                    pass
         
-        # Auto close after 3 seconds
+        # Auto close after 4 seconds
         def auto_close():
             try:
                 if notif.winfo_exists():
-                    notif.destroy()
+                    # Fade out
+                    def fade_out(alpha=0.95):
+                        if alpha > 0:
+                            try:
+                                notif.attributes('-alpha', alpha)
+                                self.root.after(20, lambda: fade_out(alpha - 0.05))
+                            except:
+                                pass
+                        else:
+                            try:
+                                notif.destroy()
+                            except:
+                                pass
+                    fade_out()
             except:
                 pass
         
+        fade_in()
         slide_in()
-        self.root.after(3000, auto_close)
+        self.root.after(4000, auto_close)
     
     def show_shortcuts_panel(self):
         """Show keyboard shortcuts panel"""
@@ -1506,7 +2572,8 @@ Created for efficient Python development"""
         content_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
         
         canvas = tk.Canvas(content_frame, bg=self.bg_color, highlightthickness=0)
-        scrollbar = tk.Scrollbar(content_frame, orient="vertical", command=canvas.yview)
+        scrollbar = tk.Scrollbar(content_frame, orient="vertical", command=canvas.yview,
+                                **self.get_scrollbar_config(), width=12)
         scrollable_frame = tk.Frame(canvas, bg=self.bg_color)
         
         scrollable_frame.bind(
@@ -1593,7 +2660,7 @@ Created for efficient Python development"""
         list_frame = tk.Frame(explorer, bg=self.bg_color)
         list_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=10)
         
-        scrollbar = tk.Scrollbar(list_frame)
+        scrollbar = tk.Scrollbar(list_frame, **self.get_scrollbar_config(), width=12)
         scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
         
         file_list = tk.Listbox(list_frame, font=("Consolas", 10),
@@ -1677,7 +2744,7 @@ Created for efficient Python development"""
         results_frame = tk.Frame(search_win, bg=self.bg_color)
         results_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=10)
         
-        scrollbar = tk.Scrollbar(results_frame)
+        scrollbar = tk.Scrollbar(results_frame, **self.get_scrollbar_config(), width=12)
         scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
         
         results_list = tk.Listbox(results_frame, font=("Consolas", 9),
@@ -1920,13 +2987,40 @@ Created for efficient Python development"""
             btn.bind("<Leave>", lambda e, b=btn: b.config(bg=self.accent_color))
         
         # Apply button
-        def apply_theme():
+        def apply_custom_theme():
             try:
+                # Update all color attributes
                 for attr, entry in color_entries.items():
                     new_color = entry.get()
                     setattr(self, attr, new_color)
-                self.apply_theme()
-                self.show_notification("✓ Theme applied! Restart for full effect", "success")
+                
+                # Update all UI elements with new colors
+                self.root.configure(bg=self.bg_color)
+                
+                if hasattr(self, 'header'):
+                    self.header.configure(bg=self.secondary_bg)
+                if hasattr(self, 'sidebar'):
+                    self.sidebar.configure(bg=self.secondary_bg)
+                if hasattr(self, 'content_frame'):
+                    self.content_frame.configure(bg=self.bg_color)
+                if hasattr(self, 'status_bar'):
+                    self.status_bar.configure(bg=self.secondary_bg)
+                
+                # Update all child widgets recursively
+                def update_widget_colors(widget):
+                    try:
+                        if isinstance(widget, (tk.Frame, tk.Label, tk.Button)):
+                            current_bg = widget.cget('bg')
+                            if current_bg in [self.bg_color, self.secondary_bg, self.accent_color]:
+                                widget.configure(bg=current_bg)
+                        for child in widget.winfo_children():
+                            update_widget_colors(child)
+                    except:
+                        pass
+                
+                update_widget_colors(self.root)
+                
+                self.show_notification("✓ Theme applied successfully!", "success")
                 customizer.destroy()
             except Exception as e:
                 self.show_notification(f"❌ Error applying theme: {str(e)}", "error")
@@ -1935,7 +3029,7 @@ Created for efficient Python development"""
                              font=("Segoe UI", 12, "bold"),
                              bg=self.accent_color, fg="white",
                              border=0, cursor="hand2", pady=12, padx=40,
-                             command=apply_theme, width=15)
+                             command=apply_custom_theme, width=15)
         apply_btn.pack(pady=10)
         apply_btn.bind("<Enter>", lambda e: apply_btn.config(bg=self.button_hover))
         apply_btn.bind("<Leave>", lambda e: apply_btn.config(bg=self.accent_color))

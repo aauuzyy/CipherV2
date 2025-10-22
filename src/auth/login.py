@@ -2,6 +2,7 @@
 import tkinter as tk
 from tkinter import messagebox
 import uuid
+import os
 
 from .license import LicenseManager
 
@@ -10,6 +11,21 @@ class LoginScreen:
         self.root = root
         self.on_success = on_success
         self.license_manager = LicenseManager()
+        
+        # Set custom icon
+        try:
+            icon_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'assets', 'cipher_icon.ico')
+            if os.path.exists(icon_path):
+                self.root.iconbitmap(icon_path)
+                # For Windows taskbar - set app ID to show custom icon
+                try:
+                    import ctypes
+                    myappid = 'cipherv4.codeeditor.app.4.5'  # arbitrary string
+                    ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
+                except:
+                    pass
+        except Exception as e:
+            print(f"Could not load icon: {e}")
         
         # Check existing license first
         valid, message = self.license_manager.check_existing_license()
@@ -22,7 +38,7 @@ class LoginScreen:
     def setup_login_window(self):
         """Create login window UI"""
         # Main window setup
-        self.root.title("CipherV2 Login")
+        self.root.title("CipherV4 Login")
         self.root.geometry("400x500")
         self.root.configure(bg="#1e1e1e")
         self.root.resizable(False, False)

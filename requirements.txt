@@ -1,0 +1,4 @@
+# AI Provider Libraries (install the one you want to use)
+requests>=2.31.0              # For OpenAI GPT-3.5 (paid after $5 free credits)
+google-generativeai>=0.3.0 # For Google Gemini (FREE)
+requests>=2.31.0           # For Hugging Face (FREE)
