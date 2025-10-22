@@ -5,6 +5,8 @@ import threading
 import time
 import os
 import sys
+import io
+import contextlib
 from collections import deque
 
 from ui.theme import ThemeManager
@@ -15,33 +17,45 @@ from utils.json_tools import JSONHandler
 
 class ModernUI:
     def __init__(self, root):
-        self.root = root
-        self.root.title("CipherV4")
-        self.root.geometry("1400x800")  # Wider window for better layout
-        self.root.resizable(False, False)  # Disable resizing
-        
-        # Set custom icon
         try:
-            icon_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'assets', 'cipher_icon.ico')
-            if os.path.exists(icon_path):
-                self.root.iconbitmap(icon_path)
-                # For Windows taskbar - set app ID to show custom icon
-                try:
-                    import ctypes
-                    myappid = 'cipherv4.codeeditor.app.4.5'  # arbitrary string
-                    ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
-                except:
-                    pass
+            print("Starting ModernUI initialization...")
+            self.root = root
+            self.root.title("CipherV4")
+            self.root.geometry("1400x800")  # Wider window for better layout
+            self.root.resizable(False, False)  # Disable resizing
+            print("Window configured...")
+            
+            # Set custom icon
+            try:
+                icon_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'assets', 'cipher_icon.ico')
+                if os.path.exists(icon_path):
+                    self.root.iconbitmap(icon_path)
+                    # For Windows taskbar - set app ID to show custom icon
+                    try:
+                        import ctypes
+                        myappid = 'cipherv4.codeeditor.app.4.5'  # arbitrary string
+                        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
+                    except:
+                        pass
+            except Exception as e:
+                print(f"Could not load icon: {e}")
+            
+            print("Setting overrideredirect...")
+            self.root.overrideredirect(True)
+            print("Overrideredirect set...")
         except Exception as e:
-            print(f"Could not load icon: {e}")
-        
-        self.root.overrideredirect(True)
+            print(f"ERROR in __init__ setup: {e}")
+            import traceback
+            traceback.print_exc()
+            raise
         
         # Initialize managers and handlers
+        print("Initializing managers...")
         self.settings = Settings()
         self.theme_manager = ThemeManager()
         self.execution_manager = ExecutionManager()
         self.json_handler = JSONHandler()
+        print("Managers initialized...")
         
         # Initialize instance variables
         self.drag_offset_x = 0
@@ -116,16 +130,47 @@ class ModernUI:
         }
         
         # Initialize theme
+        print("Applying theme...")
         self.apply_theme()
         
         # Configure TTK styles
+        print("Setting up TTK styles...")
         self.setup_ttk_styles()
         
         # Create UI
+        print("Showing loading screen...")
         self.show_loading_screen()
         
         # Set up keyboard shortcuts
+        print("Setting up keyboard shortcuts...")
         self.setup_keyboard_shortcuts()
+        print("ModernUI initialization complete!")
+
+    def on_closing(self):
+        """Handle window close event properly"""
+        try:
+            # Unbind all events to prevent errors during cleanup
+            try:
+                self.root.unbind_all("<MouseWheel>")
+            except:
+                pass
+            
+            # Quit the mainloop and destroy the window
+            try:
+                self.root.quit()
+            except:
+                pass
+            
+            try:
+                self.root.destroy()
+            except:
+                pass
+        except:
+            # Force exit if there's any issue
+            try:
+                self.root.destroy()
+            except:
+                pass
 
     def setup_ttk_styles(self):
         """Configure TTK styles for the application"""
@@ -169,7 +214,7 @@ class ModernUI:
     def show_loading_screen(self):
         """Show the initial loading screen"""
         self.loading_frame = tk.Frame(self.root, bg=self.bg_color)
-        self.loading_frame.place(x=0, y=0, width=1000, height=800)
+        self.loading_frame.place(x=0, y=0, width=1400, height=800)
         
         # Create loading screen widgets
         title = tk.Label(self.loading_frame, text="CipherV4",
@@ -569,12 +614,16 @@ class ModernUI:
         self.line_numbers = tk.Text(editor_container,
                                     width=4,
                                     padx=5,
+                                    pady=2,
                                     takefocus=0,
                                     border=0,
                                     background=self.secondary_bg,
                                     foreground="#606060",
                                     state='disabled',
-                                    font=("Consolas", 10))
+                                    font=("Consolas", 10),
+                                    spacing1=0,
+                                    spacing2=0,
+                                    spacing3=0)
         self.line_numbers.pack(side=tk.LEFT, fill=tk.Y)
         
         editor_frame = tk.Frame(editor_container, bg=self.secondary_bg)
@@ -588,13 +637,23 @@ class ModernUI:
                                   insertbackground=self.text_color,
                                   selectbackground=self.accent_color,
                                   wrap=tk.NONE,
-                                  undo=True)
+                                  undo=True,
+                                  spacing1=0,
+                                  spacing2=0,
+                                  spacing3=0)
         self.code_input.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=2, pady=2)
         
         scrollbar = tk.Scrollbar(editor_frame, command=self.code_input.yview,
                                 **self.get_scrollbar_config(), width=12)
         scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-        self.code_input.config(yscrollcommand=scrollbar.set)
+        
+        # Synchronize scrolling between code editor and line numbers
+        def sync_scroll(*args):
+            self.code_input.yview(*args)
+            self.line_numbers.yview(*args)
+        
+        scrollbar.config(command=sync_scroll)
+        self.code_input.config(yscrollcommand=lambda *args: self.on_code_scroll(*args, scrollbar))
         
         # Configure syntax highlighting tags
         self.code_input.tag_configure("keyword", foreground="#569cd6")
@@ -732,11 +791,27 @@ class ModernUI:
         """Animate button color change"""
         button.config(bg=color)
     
+    def on_code_scroll(self, *args, scrollbar=None):
+        """Handle scrolling and sync line numbers with code editor"""
+        if scrollbar:
+            scrollbar.set(*args)
+        # Sync line numbers to match code editor position
+        if hasattr(self, 'line_numbers'):
+            self.line_numbers.yview_moveto(args[0])
+    
     def update_line_numbers(self):
         """Update line numbers in code editor"""
         if hasattr(self, 'line_numbers') and hasattr(self, 'code_input'):
             try:
-                line_count = self.code_input.get('1.0', 'end-1c').count('\n') + 1
+                # Get the content and count lines properly
+                content = self.code_input.get('1.0', 'end-1c')
+                # Count lines - if content is empty, we have 1 line, otherwise count newlines + 1
+                if not content:
+                    line_count = 1
+                else:
+                    line_count = content.count('\n') + 1
+                
+                # Generate line numbers starting from 1
                 line_numbers_string = "\n".join(str(i) for i in range(1, line_count + 1))
                 
                 self.line_numbers.config(state='normal')
@@ -1115,7 +1190,9 @@ class ModernUI:
         
         # Enable mousewheel scrolling
         def on_mousewheel(event):
-            self.snippets_canvas.yview_scroll(int(-1*(event.delta/120)), "units")
+            # Check if canvas still exists before scrolling
+            if hasattr(self, 'snippets_canvas') and self.snippets_canvas.winfo_exists():
+                self.snippets_canvas.yview_scroll(int(-1*(event.delta/120)), "units")
         
         self.snippets_canvas.bind_all("<MouseWheel>", on_mousewheel)
     
@@ -3187,5 +3264,5 @@ Created for efficient Python development"""
         except:
             pass
         finally:
-            # Close the application
-            self.root.quit()
+            # Use the proper on_closing handler
+            self.on_closing()
