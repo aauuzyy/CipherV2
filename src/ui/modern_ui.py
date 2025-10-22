@@ -14,6 +14,7 @@ from ui.editor import CodeEditor
 from utils.settings import Settings
 from utils.execution import ExecutionManager
 from utils.json_tools import JSONHandler
+from utils.memory_editor import MemoryScanner
 
 class ModernUI:
     def __init__(self, root):
@@ -389,6 +390,7 @@ class ModernUI:
             "Console": "Console",
             "History": "History",
             "Snippets": "Snippets",
+            "ValueChanger": "Value Changer",
             "AI Assistant": "AI Assistant",
             "Progress": "Progress",
             "Settings": "Settings",
@@ -494,6 +496,8 @@ class ModernUI:
             self.show_history()
         elif page == "Snippets":
             self.show_snippets()
+        elif page == "ValueChanger":
+            self.show_value_changer()
         elif page == "AI Assistant":
             self.show_ai_assistant()
         elif page == "Progress":
@@ -790,6 +794,11 @@ class ModernUI:
     def animate_button(self, button, color):
         """Animate button color change"""
         button.config(bg=color)
+    
+    def add_hover_effect(self, button, hover_color, normal_color):
+        """Add hover effect to button"""
+        button.bind("<Enter>", lambda e: button.config(bg=hover_color))
+        button.bind("<Leave>", lambda e: button.config(bg=normal_color))
     
     def on_code_scroll(self, *args, scrollbar=None):
         """Handle scrolling and sync line numbers with code editor"""
@@ -1380,6 +1389,491 @@ class ModernUI:
                 delattr(self, 'pending_snippet')
             except Exception as e:
                 print(f"Error inserting snippet: {e}")
+    
+    def show_value_changer(self):
+        """Show ValueChanger - Memory Editor (like Cheat Engine)"""
+        # Initialize memory scanner if not exists
+        if not hasattr(self, 'memory_scanner'):
+            self.memory_scanner = MemoryScanner()
+        
+        container = tk.Frame(self.page_container, bg=self.bg_color)
+        container.pack(fill=tk.BOTH, expand=True, padx=15, pady=15)
+        
+        # Header with icon
+        header_frame = tk.Frame(container, bg=self.bg_color)
+        header_frame.pack(fill=tk.X, pady=(0, 20))
+        
+        header = tk.Label(header_frame, text="⚡ Value Changer",
+                         font=("Segoe UI", 18, "bold"),
+                         bg=self.bg_color, fg=self.text_color)
+        header.pack(side=tk.LEFT)
+        
+        subtitle = tk.Label(header_frame, text="Memory Scanner & Editor",
+                           font=("Segoe UI", 10),
+                           bg=self.bg_color, fg="#888888")
+        subtitle.pack(side=tk.LEFT, padx=10)
+        
+        # Process Controls Card
+        process_card = tk.Frame(container, bg=self.secondary_bg)
+        process_card.pack(fill=tk.X, pady=(0, 15))
+        
+        process_header = tk.Label(process_card, text="🎯 Process Selection",
+                                 font=("Segoe UI", 11, "bold"),
+                                 bg=self.secondary_bg, fg=self.text_color)
+        process_header.pack(anchor="w", padx=15, pady=(10, 5))
+        
+        controls_inner = tk.Frame(process_card, bg=self.secondary_bg)
+        controls_inner.pack(fill=tk.X, padx=15, pady=(0, 15))
+        
+        # Process dropdown
+        process_frame = tk.Frame(controls_inner, bg=self.secondary_bg)
+        process_frame.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        
+        self.process_var = tk.StringVar()
+        process_combo = ttk.Combobox(process_frame, textvariable=self.process_var,
+                                     width=45, state="readonly", font=("Segoe UI", 10))
+        process_combo.pack(side=tk.LEFT, ipady=5)
+        
+        # Buttons frame
+        btn_frame = tk.Frame(controls_inner, bg=self.secondary_bg)
+        btn_frame.pack(side=tk.LEFT, padx=(10, 0))
+        
+        # Refresh button
+        refresh_btn = tk.Button(btn_frame, text="🔄",
+                               font=("Segoe UI", 11),
+                               bg=self.accent_color, fg="white",
+                               border=0, width=3, height=1,
+                               cursor="hand2",
+                               command=lambda: self.refresh_process_list(process_combo))
+        refresh_btn.pack(side=tk.LEFT, padx=2)
+        self.add_hover_effect(refresh_btn, "#0066cc", self.accent_color)
+        
+        # Attach button
+        attach_btn = tk.Button(btn_frame, text="▶ Attach",
+                              font=("Segoe UI", 10, "bold"),
+                              bg="#00aa00", fg="white",
+                              border=0, padx=20, pady=8,
+                              cursor="hand2",
+                              command=lambda: self.attach_to_process())
+        attach_btn.pack(side=tk.LEFT, padx=2)
+        self.add_hover_effect(attach_btn, "#009900", "#00aa00")
+        
+        # Detach button
+        detach_btn = tk.Button(btn_frame, text="⏹ Detach",
+                              font=("Segoe UI", 10, "bold"),
+                              bg="#cc3333", fg="white",
+                              border=0, padx=20, pady=8,
+                              cursor="hand2",
+                              command=lambda: self.detach_from_process())
+        detach_btn.pack(side=tk.LEFT, padx=2)
+        self.add_hover_effect(detach_btn, "#bb2222", "#cc3333")
+        
+        # Scan controls frame
+        scan_frame = tk.Frame(container, bg=self.secondary_bg)
+        scan_frame.pack(fill=tk.X, pady=(0, 10))
+        
+        # Value to scan
+        value_label = tk.Label(scan_frame, text="Value:",
+                              font=("Segoe UI", 10),
+                              bg=self.secondary_bg, fg=self.text_color)
+        value_label.grid(row=0, column=0, padx=10, pady=10, sticky="w")
+        
+        self.scan_value_var = tk.StringVar()
+        value_entry = tk.Entry(scan_frame, textvariable=self.scan_value_var,
+                              font=("Consolas", 10), width=20,
+                              bg=self.bg_color, fg=self.text_color,
+                              insertbackground=self.text_color)
+        value_entry.grid(row=0, column=1, padx=5, pady=10)
+        
+        # Value type
+        type_label = tk.Label(scan_frame, text="Type:",
+                             font=("Segoe UI", 10),
+                             bg=self.secondary_bg, fg=self.text_color)
+        type_label.grid(row=0, column=2, padx=10, pady=10, sticky="w")
+        
+        self.value_type_var = tk.StringVar(value="4 Bytes")
+        type_combo = ttk.Combobox(scan_frame, textvariable=self.value_type_var,
+                                  values=["Byte", "2 Bytes", "4 Bytes", "Float", "Double"],
+                                  width=12, state="readonly")
+        type_combo.grid(row=0, column=3, padx=5, pady=10)
+        
+        # First scan button
+        first_scan_btn = tk.Button(scan_frame, text="🔍 First Scan",
+                                   font=("Segoe UI", 10, "bold"),
+                                   bg=self.accent_color, fg="white",
+                                   border=0, padx=20, pady=8,
+                                   cursor="hand2",
+                                   command=lambda: self.perform_first_scan())
+        first_scan_btn.grid(row=0, column=4, padx=5, pady=10)
+        
+        # Next scan button
+        next_scan_btn = tk.Button(scan_frame, text="🔎 Next Scan",
+                                 font=("Segoe UI", 10, "bold"),
+                                 bg="#0066cc", fg="white",
+                                 border=0, padx=20, pady=8,
+                                 cursor="hand2",
+                                 command=lambda: self.perform_next_scan())
+        next_scan_btn.grid(row=0, column=5, padx=5, pady=10)
+        
+        # Stop button
+        stop_btn = tk.Button(scan_frame, text="⏹ Stop",
+                            font=("Segoe UI", 10, "bold"),
+                            bg="#cc0000", fg="white",
+                            border=0, padx=15, pady=8,
+                            cursor="hand2",
+                            command=lambda: self.stop_scan())
+        stop_btn.grid(row=0, column=6, padx=5, pady=10)
+        
+        # Progress bar
+        progress_frame = tk.Frame(container, bg=self.secondary_bg)
+        progress_frame.pack(fill=tk.X, pady=(0, 10))
+        
+        self.scan_progress_label = tk.Label(progress_frame, text="Ready",
+                                           font=("Segoe UI", 9),
+                                           bg=self.secondary_bg, fg=self.text_color)
+        self.scan_progress_label.pack(side=tk.LEFT, padx=10, pady=5)
+        
+        self.scan_progressbar = ttk.Progressbar(progress_frame, length=400, mode='determinate')
+        self.scan_progressbar.pack(side=tk.LEFT, padx=10, pady=5)
+        
+        # Split view - Found addresses and Address list
+        split_frame = tk.Frame(container, bg=self.bg_color)
+        split_frame.pack(fill=tk.BOTH, expand=True)
+        
+        # Left side - Found addresses
+        left_frame = tk.Frame(split_frame, bg=self.secondary_bg)
+        left_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 5))
+        
+        left_label = tk.Label(left_frame, text="Found Addresses",
+                             font=("Segoe UI", 11, "bold"),
+                             bg=self.secondary_bg, fg=self.text_color)
+        left_label.pack(pady=5)
+        
+        # Listbox for found addresses
+        list_frame = tk.Frame(left_frame, bg=self.secondary_bg)
+        list_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        
+        scrollbar = tk.Scrollbar(list_frame, **self.get_scrollbar_config())
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        
+        self.found_addresses_list = tk.Listbox(list_frame, font=("Consolas", 9),
+                                               bg=self.bg_color, fg=self.text_color,
+                                               selectbackground=self.accent_color,
+                                               yscrollcommand=scrollbar.set)
+        self.found_addresses_list.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        scrollbar.config(command=self.found_addresses_list.yview)
+        
+        # Add to address list button
+        add_btn = tk.Button(left_frame, text="➕ Add Selected to Address List",
+                           font=("Segoe UI", 9, "bold"),
+                           bg=self.accent_color, fg="white",
+                           border=0, padx=10, pady=5,
+                           cursor="hand2",
+                           command=lambda: self.add_to_address_list())
+        add_btn.pack(pady=5)
+        
+        # Right side - Address list (for editing)
+        right_frame = tk.Frame(split_frame, bg=self.secondary_bg)
+        right_frame.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True, padx=(5, 0))
+        
+        right_label = tk.Label(right_frame, text="Address List",
+                              font=("Segoe UI", 11, "bold"),
+                              bg=self.secondary_bg, fg=self.text_color)
+        right_label.pack(pady=5)
+        
+        # Treeview for address list with editable values
+        tree_frame = tk.Frame(right_frame, bg=self.secondary_bg)
+        tree_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        
+        tree_scroll = tk.Scrollbar(tree_frame, **self.get_scrollbar_config())
+        tree_scroll.pack(side=tk.RIGHT, fill=tk.Y)
+        
+        self.address_tree = ttk.Treeview(tree_frame, columns=("Address", "Value", "Type"),
+                                        show="headings", yscrollcommand=tree_scroll.set)
+        self.address_tree.heading("Address", text="Address")
+        self.address_tree.heading("Value", text="Value")
+        self.address_tree.heading("Type", text="Type")
+        self.address_tree.column("Address", width=120)
+        self.address_tree.column("Value", width=100)
+        self.address_tree.column("Type", width=80)
+        self.address_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        tree_scroll.config(command=self.address_tree.yview)
+        
+        # Double-click to edit value
+        self.address_tree.bind("<Double-1>", self.edit_address_value)
+        
+        # Buttons for address list
+        btn_frame = tk.Frame(right_frame, bg=self.secondary_bg)
+        btn_frame.pack(pady=5)
+        
+        remove_btn = tk.Button(btn_frame, text="🗑 Remove",
+                              font=("Segoe UI", 9, "bold"),
+                              bg="#cc0000", fg="white",
+                              border=0, padx=10, pady=5,
+                              cursor="hand2",
+                              command=lambda: self.remove_from_address_list())
+        remove_btn.pack(side=tk.LEFT, padx=5)
+        
+        refresh_values_btn = tk.Button(btn_frame, text="🔄 Refresh Values",
+                                      font=("Segoe UI", 9, "bold"),
+                                      bg=self.accent_color, fg="white",
+                                      border=0, padx=10, pady=5,
+                                      cursor="hand2",
+                                      command=lambda: self.refresh_address_values())
+        refresh_values_btn.pack(side=tk.LEFT, padx=5)
+        
+        # Initialize with process list
+        self.refresh_process_list(process_combo)
+    
+    def refresh_process_list(self, combo):
+        """Refresh the list of running processes"""
+        try:
+            processes = self.memory_scanner.get_process_list()
+            process_names = [f"{pid}: {name}" for pid, name in processes]
+            combo['values'] = process_names
+            self.update_status(f"Found {len(processes)} processes")
+        except Exception as e:
+            self.update_status(f"Error refreshing processes: {e}")
+    
+    def attach_to_process(self):
+        """Attach to selected process"""
+        try:
+            selection = self.process_var.get()
+            if not selection:
+                self.update_status("Please select a process first")
+                return
+            
+            # Extract process name from "pid: name" format
+            process_name = selection.split(": ", 1)[1]
+            
+            if self.memory_scanner.attach_process(process_name):
+                self.update_status(f"✓ Attached to {process_name}")
+            else:
+                self.update_status(f"✗ Failed to attach to {process_name}")
+        except Exception as e:
+            self.update_status(f"Error attaching: {e}")
+    
+    def detach_from_process(self):
+        """Detach from current process"""
+        try:
+            self.memory_scanner.detach_process()
+            self.found_addresses_list.delete(0, tk.END)
+            self.update_status("Detached from process")
+        except Exception as e:
+            self.update_status(f"Error detaching: {e}")
+    
+    def perform_first_scan(self):
+        """Perform first memory scan"""
+        try:
+            if not self.memory_scanner.process:
+                self.update_status("Please attach to a process first")
+                return
+            
+            value = self.scan_value_var.get()
+            if not value:
+                self.update_status("Please enter a value to scan")
+                return
+            
+            value_type = self.value_type_var.get()
+            
+            self.found_addresses_list.delete(0, tk.END)
+            self.scan_progressbar['value'] = 0
+            self.scan_progress_label.config(text="Scanning...")
+            
+            def update_progress(progress, count):
+                self.scan_progressbar['value'] = progress
+                self.scan_progress_label.config(text=f"Scanning... {count} found")
+                if progress >= 100:
+                    self.display_found_addresses()
+                    self.update_status(f"First scan complete: {count} addresses found")
+            
+            self.memory_scanner.first_scan(value, value_type, update_progress)
+            
+        except Exception as e:
+            self.update_status(f"Scan error: {e}")
+    
+    def perform_next_scan(self):
+        """Perform next scan on found addresses"""
+        try:
+            if not self.memory_scanner.process:
+                self.update_status("Please attach to a process first")
+                return
+            
+            if not self.memory_scanner.found_addresses:
+                self.update_status("Perform a first scan first")
+                return
+            
+            value = self.scan_value_var.get()
+            if not value:
+                self.update_status("Please enter a value to scan")
+                return
+            
+            value_type = self.value_type_var.get()
+            
+            self.scan_progressbar['value'] = 0
+            self.scan_progress_label.config(text="Scanning...")
+            
+            def update_progress(progress, count):
+                self.scan_progressbar['value'] = progress
+                self.scan_progress_label.config(text=f"Scanning... {count} remaining")
+                if progress >= 100:
+                    self.display_found_addresses()
+                    self.update_status(f"Next scan complete: {count} addresses remaining")
+            
+            self.memory_scanner.next_scan(value, value_type, update_progress)
+            
+        except Exception as e:
+            self.update_status(f"Scan error: {e}")
+    
+    def stop_scan(self):
+        """Stop current scan"""
+        self.memory_scanner.stop_scan()
+        self.scan_progress_label.config(text="Stopped")
+        self.update_status("Scan stopped")
+    
+    def display_found_addresses(self):
+        """Display found addresses in listbox"""
+        self.found_addresses_list.delete(0, tk.END)
+        
+        # Limit display to first 10000 addresses
+        addresses = self.memory_scanner.found_addresses[:10000]
+        
+        for addr in addresses:
+            self.found_addresses_list.insert(tk.END, f"0x{addr:08X}")
+        
+        if len(self.memory_scanner.found_addresses) > 10000:
+            self.found_addresses_list.insert(tk.END, f"... and {len(self.memory_scanner.found_addresses) - 10000} more")
+    
+    def add_to_address_list(self):
+        """Add selected address to address list for editing"""
+        try:
+            selection = self.found_addresses_list.curselection()
+            if not selection:
+                return
+            
+            idx = selection[0]
+            if idx >= len(self.memory_scanner.found_addresses):
+                return
+            
+            address = self.memory_scanner.found_addresses[idx]
+            value_type = self.value_type_var.get()
+            
+            # Get current value
+            current_value = self.memory_scanner.get_address_value(address, value_type)
+            
+            # Add to tree
+            self.address_tree.insert("", tk.END, values=(f"0x{address:08X}", current_value, value_type))
+            self.update_status(f"Added address 0x{address:08X} to list")
+            
+        except Exception as e:
+            self.update_status(f"Error adding address: {e}")
+    
+    def remove_from_address_list(self):
+        """Remove selected address from address list"""
+        try:
+            selection = self.address_tree.selection()
+            if selection:
+                self.address_tree.delete(selection)
+                self.update_status("Address removed")
+        except Exception as e:
+            self.update_status(f"Error removing address: {e}")
+    
+    def refresh_address_values(self):
+        """Refresh values in address list"""
+        try:
+            for item in self.address_tree.get_children():
+                values = self.address_tree.item(item)['values']
+                address_str = values[0]
+                address = int(address_str, 16)
+                value_type = values[2]
+                
+                current_value = self.memory_scanner.get_address_value(address, value_type)
+                self.address_tree.item(item, values=(address_str, current_value, value_type))
+            
+            self.update_status("Values refreshed")
+        except Exception as e:
+            self.update_status(f"Error refreshing values: {e}")
+    
+    def edit_address_value(self, event):
+        """Edit value at address (double-click handler)"""
+        try:
+            selection = self.address_tree.selection()
+            if not selection:
+                return
+            
+            item = selection[0]
+            values = self.address_tree.item(item)['values']
+            address_str = values[0]
+            current_value = values[1]
+            value_type = values[2]
+            
+            # Create popup dialog for editing
+            dialog = tk.Toplevel(self.root)
+            dialog.title("Edit Value")
+            dialog.geometry("300x150")
+            dialog.configure(bg=self.bg_color)
+            dialog.transient(self.root)
+            dialog.grab_set()
+            
+            # Center dialog
+            dialog.update_idletasks()
+            x = (dialog.winfo_screenwidth() // 2) - (300 // 2)
+            y = (dialog.winfo_screenheight() // 2) - (150 // 2)
+            dialog.geometry(f"+{x}+{y}")
+            
+            tk.Label(dialog, text=f"Address: {address_str}",
+                    font=("Segoe UI", 10),
+                    bg=self.bg_color, fg=self.text_color).pack(pady=10)
+            
+            tk.Label(dialog, text="New Value:",
+                    font=("Segoe UI", 10),
+                    bg=self.bg_color, fg=self.text_color).pack(pady=5)
+            
+            value_var = tk.StringVar(value=str(current_value))
+            entry = tk.Entry(dialog, textvariable=value_var,
+                           font=("Consolas", 11), width=20,
+                           bg=self.secondary_bg, fg=self.text_color)
+            entry.pack(pady=5)
+            entry.focus()
+            
+            def save_value():
+                try:
+                    new_value = value_var.get()
+                    address = int(address_str, 16)
+                    
+                    if self.memory_scanner.set_address_value(address, new_value, value_type):
+                        self.address_tree.item(item, values=(address_str, new_value, value_type))
+                        self.update_status(f"✓ Value changed at {address_str}")
+                        dialog.destroy()
+                    else:
+                        self.update_status(f"✗ Failed to change value at {address_str}")
+                except Exception as e:
+                    self.update_status(f"Error: {e}")
+            
+            btn_frame = tk.Frame(dialog, bg=self.bg_color)
+            btn_frame.pack(pady=10)
+            
+            save_btn = tk.Button(btn_frame, text="Save",
+                               font=("Segoe UI", 9, "bold"),
+                               bg=self.accent_color, fg="white",
+                               border=0, padx=20, pady=5,
+                               cursor="hand2",
+                               command=save_value)
+            save_btn.pack(side=tk.LEFT, padx=5)
+            
+            cancel_btn = tk.Button(btn_frame, text="Cancel",
+                                  font=("Segoe UI", 9, "bold"),
+                                  bg=self.secondary_bg, fg=self.text_color,
+                                  border=0, padx=20, pady=5,
+                                  cursor="hand2",
+                                  command=dialog.destroy)
+            cancel_btn.pack(side=tk.LEFT, padx=5)
+            
+            entry.bind("<Return>", lambda e: save_value())
+            entry.bind("<Escape>", lambda e: dialog.destroy())
+            
+        except Exception as e:
+            self.update_status(f"Error editing value: {e}")
     
     def show_ai_assistant(self):
         """Show AI Assistant page with Hugging Face integration"""
