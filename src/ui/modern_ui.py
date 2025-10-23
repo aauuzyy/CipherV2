@@ -369,7 +369,7 @@ class ModernUI:
         title.bind("<Button-1>", self.start_drag)
         title.bind("<B1-Motion>", self.do_drag)
         
-        version = tk.Label(title_frame, text="v4.1",
+        version = tk.Label(title_frame, text="v4.1.1",
                           font=("Segoe UI", 8),
                           bg=self.secondary_bg, fg="#a0a0a0")
         version.pack(side=tk.LEFT, pady=15)
