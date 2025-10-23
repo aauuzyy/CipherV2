@@ -15,6 +15,12 @@ from utils.settings import Settings
 from utils.execution import ExecutionManager
 from utils.json_tools import JSONHandler
 from utils.memory_editor import MemoryScanner
+from utils.update_checker import UpdateChecker
+from utils.command_palette import CommandPalette
+from utils.notifications import ToastNotification
+from utils.diff_viewer import DiffViewer
+from utils.dll_injector import DLLInjector
+from utils.process_inspector import ProcessInspector
 
 class ModernUI:
     def __init__(self, root):
@@ -76,6 +82,12 @@ class ModernUI:
         self.scripts_dir = os.path.join(os.path.expanduser("~"), "Desktop", "BotModMenuSystem", "Saved Scripts")
         if not os.path.exists(self.scripts_dir):
             os.makedirs(self.scripts_dir)
+        
+        # Recent files tracking (MRU - Most Recently Used)
+        self.recent_files = []
+        self.max_recent_files = 10
+        self.recent_files_file = os.path.join(self.scripts_dir, ".recent_files.json")
+        self.load_recent_files()
         
         # Auto-save settings
         self.auto_save_enabled = True
@@ -145,6 +157,10 @@ class ModernUI:
         # Set up keyboard shortcuts
         print("Setting up keyboard shortcuts...")
         self.setup_keyboard_shortcuts()
+        
+        # Initialize command palette
+        self.setup_command_palette()
+        
         print("ModernUI initialization complete!")
 
     def on_closing(self):
@@ -320,11 +336,13 @@ class ModernUI:
         
         action_buttons = [
             ("📁", self.show_file_explorer),
+            ("🕐", self.show_recent_files),
             ("⌨", self.show_shortcuts_panel),
             ("🔍", self.show_global_search),
+            ("🎨", self.show_color_picker),
             ("📋", self.show_templates_manager),
-            ("🎨", self.show_theme_customizer),
-            ("📊", self.show_statistics_dashboard)
+            ("📊", self.show_statistics_dashboard),
+            ("🔀", self.show_diff_viewer)
         ]
         
         for icon, command in action_buttons:
@@ -371,14 +389,43 @@ class ModernUI:
                                   bg=self.secondary_bg, fg="#a0a0a0")
         self.status_text.pack(side=tk.LEFT, padx=10)
         
+        # Character/Word/Line count (Feature #65)
+        self.char_count_label = tk.Label(self.status_bar, text="Chars: 0 | Words: 0 | Lines: 0",
+                                        font=("Segoe UI", 8),
+                                        bg=self.secondary_bg, fg="#a0a0a0")
+        self.char_count_label.pack(side=tk.LEFT, padx=10)
+        
+        # Zoom level (Feature #33)
+        self.zoom_label = tk.Label(self.status_bar, text="100%",
+                                  font=("Segoe UI", 8),
+                                  bg=self.secondary_bg, fg="#a0a0a0",
+                                  cursor="hand2")
+        self.zoom_label.pack(side=tk.RIGHT, padx=10)
+        self.zoom_label.bind("<Button-1>", lambda e: self.reset_zoom())
+        
+        # Update checker button (Feature #69)
+        self.update_btn = tk.Label(self.status_bar, text="🔄 Check Updates",
+                                  font=("Segoe UI", 8),
+                                  bg=self.secondary_bg, fg="#00aa00",
+                                  cursor="hand2")
+        self.update_btn.pack(side=tk.RIGHT, padx=10)
+        self.update_btn.bind("<Button-1>", lambda e: self.check_for_updates())
+        
         # Time display
         self.time_display = tk.Label(self.status_bar, text="",
                                    font=("Segoe UI", 8),
                                    bg=self.secondary_bg, fg="#a0a0a0")
         self.time_display.pack(side=tk.RIGHT, padx=10)
         
+        # Initialize zoom level and update checker
+        self.zoom_level = 1.0
+        self.update_checker = UpdateChecker()
+        
         # Start time update
         self.update_time()
+        
+        # Check for updates on startup (async)
+        threading.Thread(target=self.silent_update_check, daemon=True).start()
 
     def create_sidebar(self):
         """Create the application sidebar"""
@@ -392,7 +439,10 @@ class ModernUI:
             "Console": "Console",
             "History": "History",
             "Snippets": "Snippets",
+            "Tools": "Tools",
             "ValueChanger": "Value Changer",
+            "DLLInjector": "DLL Injector",
+            "ProcessInspector": "Process Inspector",
             "AI Assistant": "AI Assistant",
             "Progress": "Progress",
             "Settings": "Settings",
@@ -498,8 +548,14 @@ class ModernUI:
             self.show_history()
         elif page == "Snippets":
             self.show_snippets()
+        elif page == "Tools":
+            self.show_tools()
         elif page == "ValueChanger":
             self.show_value_changer()
+        elif page == "DLLInjector":
+            self.show_dll_injector()
+        elif page == "ProcessInspector":
+            self.show_process_inspector()
         elif page == "AI Assistant":
             self.show_ai_assistant()
         elif page == "Progress":
@@ -1423,14 +1479,34 @@ class ModernUI:
                 font=("Segoe UI", 11, "bold"),
                 bg="#1e1e1e", fg=self.text_color).pack(anchor="w", padx=20, pady=(15, 10))
         
+        # Search bar for processes
+        search_frame = tk.Frame(process_card, bg="#1e1e1e")
+        search_frame.pack(fill=tk.X, padx=20, pady=(0, 10))
+        
+        tk.Label(search_frame, text="Search:", font=("Segoe UI", 9, "bold"),
+                bg="#1e1e1e", fg="#aaaaaa").pack(side=tk.LEFT, padx=(0, 10))
+        
+        self.process_search_var = tk.StringVar()
+        self.process_search_var.trace('w', lambda *args: self.filter_process_list())
+        
+        search_entry = tk.Entry(search_frame, textvariable=self.process_search_var,
+                               font=("Segoe UI", 10),
+                               bg="#0d0d0d", fg=self.text_color,
+                               insertbackground=self.accent_color,
+                               relief=tk.FLAT, bd=0)
+        search_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, ipady=6, ipadx=10)
+        
         # Process selection
         process_select = tk.Frame(process_card, bg="#1e1e1e")
         process_select.pack(fill=tk.X, padx=20, pady=(0, 15))
         
         self.process_var = tk.StringVar()
-        process_combo = ttk.Combobox(process_select, textvariable=self.process_var,
+        self.process_combo = ttk.Combobox(process_select, textvariable=self.process_var,
                                     width=55, state="readonly", font=("Segoe UI", 10))
-        process_combo.pack(side=tk.LEFT, ipady=6)
+        self.process_combo.pack(side=tk.LEFT, ipady=6)
+        
+        # Store all processes for filtering
+        self.all_processes = []
         
         # Buttons row - filling space
         btn_row = tk.Frame(process_card, bg="#1e1e1e")
@@ -1442,7 +1518,7 @@ class ModernUI:
                                activebackground="#3d3d3d",
                                relief=tk.FLAT, bd=0,
                                cursor="hand2",
-                               command=lambda: self.refresh_process_list(process_combo))
+                               command=lambda: self.refresh_process_list())
         refresh_btn.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 8), ipady=10)
         self.add_hover_effect(refresh_btn, "#3d3d3d", "#2d2d2d")
         
@@ -1653,17 +1729,33 @@ class ModernUI:
         self.add_hover_effect(refresh_btn, "#3d3d3d", "#2d2d2d")
         
         # Initialize
-        self.refresh_process_list(process_combo)
+        self.refresh_process_list()
     
-    def refresh_process_list(self, combo):
+    def filter_process_list(self):
+        """Filter process list based on search term"""
+        try:
+            search_term = self.process_search_var.get().lower()
+            if not search_term:
+                # Show all processes
+                self.process_combo['values'] = self.all_processes
+            else:
+                # Filter processes
+                filtered = [p for p in self.all_processes if search_term in p.lower()]
+                self.process_combo['values'] = filtered
+        except Exception as e:
+            print(f"Error filtering processes: {e}")
+    
+    def refresh_process_list(self):
         """Refresh the list of running processes"""
         try:
             processes = self.memory_scanner.get_process_list()
-            process_names = [f"{pid}: {name}" for pid, name in processes]
-            combo['values'] = process_names
+            self.all_processes = [f"{pid}: {name}" for pid, name in processes]
+            self.process_combo['values'] = self.all_processes
             self.update_status(f"Found {len(processes)} processes")
+            self.show_notification(f"Refreshed: {len(processes)} processes found", "info")
         except Exception as e:
             self.update_status(f"Error refreshing processes: {e}")
+            self.show_notification(f"Error: {e}", "error")
     
     def attach_to_process(self):
         """Attach to selected process"""
@@ -1696,31 +1788,64 @@ class ModernUI:
         """Perform first memory scan"""
         try:
             if not self.memory_scanner.process:
-                self.update_status("Please attach to a process first")
+                self.show_notification("Please attach to a process first!", "warning")
+                self.update_status("❌ Not attached to any process")
                 return
             
             value = self.scan_value_var.get()
             if not value:
-                self.update_status("Please enter a value to scan")
+                self.show_notification("Please enter a value to scan", "warning")
                 return
             
             value_type = self.value_type_var.get()
             
             self.found_addresses_list.delete(0, tk.END)
             self.scan_progressbar['value'] = 0
-            self.scan_progress_label.config(text="Scanning...")
+            self.scan_progress_label.config(text="Initializing scan...")
+            self.update_status("🔍 Starting first scan...")
             
-            def update_progress(progress, count):
-                self.scan_progressbar['value'] = progress
-                self.scan_progress_label.config(text=f"Scanning... {count} found")
-                if progress >= 100:
-                    self.display_found_addresses()
-                    self.update_status(f"First scan complete: {count} addresses found")
+            # Run scan in background thread to keep UI responsive
+            def run_scan():
+                try:
+                    addresses_found = []
+                    
+                    def update_progress(progress, count):
+                        try:
+                            self.scan_progressbar['value'] = progress
+                            self.scan_progress_label.config(text=f"Scanning memory... {count} found")
+                            self.root.update_idletasks()
+                        except:
+                            pass
+                    
+                    # Perform the scan
+                    result = self.memory_scanner.first_scan(value, value_type, update_progress)
+                    
+                    if result:
+                        # Display results
+                        self.root.after(0, lambda: self.display_found_addresses())
+                        self.root.after(0, lambda: self.show_notification(
+                            f"✓ Found {len(self.memory_scanner.found_addresses)} addresses", "success"))
+                        self.root.after(0, lambda: self.update_status(
+                            f"✓ First scan complete: {len(self.memory_scanner.found_addresses)} addresses found"))
+                    else:
+                        self.root.after(0, lambda: self.show_notification("No addresses found", "info"))
+                        self.root.after(0, lambda: self.update_status("❌ No addresses found"))
+                    
+                    self.scan_progressbar['value'] = 100
+                    self.scan_progress_label.config(text="Scan complete!")
+                    
+                except Exception as e:
+                    self.root.after(0, lambda: self.show_notification(f"Scan error: {e}", "error"))
+                    self.root.after(0, lambda: self.update_status(f"❌ Scan error: {e}"))
             
-            self.memory_scanner.first_scan(value, value_type, update_progress)
+            # Start scan thread
+            import threading
+            scan_thread = threading.Thread(target=run_scan, daemon=True)
+            scan_thread.start()
             
         except Exception as e:
-            self.update_status(f"Scan error: {e}")
+            self.show_notification(f"Scan error: {e}", "error")
+            self.update_status(f"❌ Scan error: {e}")
     
     def perform_next_scan(self):
         """Perform next scan on found addresses"""
@@ -1904,6 +2029,900 @@ class ModernUI:
             
         except Exception as e:
             self.update_status(f"Error editing value: {e}")
+    
+    def show_tools(self):
+        """Show comprehensive Tools page with all utilities"""
+        from utils.tools import ToolsCollection
+        from utils.http_client import HTTPClient
+        from utils.formatter import Formatter
+        
+        container = tk.Frame(self.page_container, bg=self.bg_color)
+        container.pack(fill=tk.BOTH, expand=True)
+        
+        # Create tabs for different tool categories
+        notebook = ttk.Notebook(container)
+        notebook.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
+        
+        # Tab 1: Text Tools
+        text_tools = tk.Frame(notebook, bg=self.bg_color)
+        notebook.add(text_tools, text="Text Tools")
+        
+        # Base64 Encoder/Decoder
+        base64_frame = tk.LabelFrame(text_tools, text="Base64 Encoder/Decoder", 
+                                      bg=self.secondary_bg, fg=self.text_color,
+                                      font=("Segoe UI", 10, "bold"))
+        base64_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        
+        base64_input = tk.Text(base64_frame, height=5, font=("Consolas", 10),
+                               bg=self.bg_color, fg=self.text_color, wrap=tk.WORD)
+        base64_input.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
+        
+        base64_btns = tk.Frame(base64_frame, bg=self.secondary_bg)
+        base64_btns.pack(fill=tk.X, padx=10, pady=5)
+        
+        def encode_b64():
+            text = base64_input.get("1.0", "end-1c")
+            result = ToolsCollection.encode_base64(text)
+            base64_output.delete("1.0", "end")
+            base64_output.insert("1.0", result)
+        
+        def decode_b64():
+            text = base64_input.get("1.0", "end-1c")
+            result = ToolsCollection.decode_base64(text)
+            base64_output.delete("1.0", "end")
+            base64_output.insert("1.0", result)
+        
+        tk.Button(base64_btns, text="▶ Encode", font=("Segoe UI", 9, "bold"),
+                 bg=self.accent_color, fg="white", relief=tk.FLAT, padx=15, pady=5,
+                 cursor="hand2", command=encode_b64).pack(side=tk.LEFT, padx=5)
+        
+        tk.Button(base64_btns, text="◀ Decode", font=("Segoe UI", 9, "bold"),
+                 bg="#0066cc", fg="white", relief=tk.FLAT, padx=15, pady=5,
+                 cursor="hand2", command=decode_b64).pack(side=tk.LEFT, padx=5)
+        
+        base64_output = tk.Text(base64_frame, height=5, font=("Consolas", 10),
+                                bg=self.bg_color, fg=self.text_color, wrap=tk.WORD)
+        base64_output.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
+        
+        # Tab 2: JSON/XML Formatter
+        formatter_tab = tk.Frame(notebook, bg=self.bg_color)
+        notebook.add(formatter_tab, text="JSON/XML")
+        
+        formatter_input = tk.Text(formatter_tab, height=10, font=("Consolas", 10),
+                                  bg=self.bg_color, fg=self.text_color, wrap=tk.WORD)
+        formatter_input.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        
+        formatter_btns = tk.Frame(formatter_tab, bg=self.bg_color)
+        formatter_btns.pack(fill=tk.X, padx=10, pady=5)
+        
+        def format_json_text():
+            text = formatter_input.get("1.0", "end-1c")
+            result = Formatter.format_json(text)
+            formatter_output.delete("1.0", "end")
+            formatter_output.insert("1.0", result)
+        
+        def minify_json_text():
+            text = formatter_input.get("1.0", "end-1c")
+            result = Formatter.minify_json(text)
+            formatter_output.delete("1.0", "end")
+            formatter_output.insert("1.0", result)
+        
+        def format_xml_text():
+            text = formatter_input.get("1.0", "end-1c")
+            result = Formatter.format_xml(text)
+            formatter_output.delete("1.0", "end")
+            formatter_output.insert("1.0", result)
+        
+        tk.Button(formatter_btns, text="Format JSON", font=("Segoe UI", 9, "bold"),
+                 bg=self.accent_color, fg="white", relief=tk.FLAT, padx=15, pady=8,
+                 cursor="hand2", command=format_json_text).pack(side=tk.LEFT, padx=5)
+        
+        tk.Button(formatter_btns, text="Minify JSON", font=("Segoe UI", 9, "bold"),
+                 bg="#0066cc", fg="white", relief=tk.FLAT, padx=15, pady=8,
+                 cursor="hand2", command=minify_json_text).pack(side=tk.LEFT, padx=5)
+        
+        tk.Button(formatter_btns, text="Format XML", font=("Segoe UI", 9, "bold"),
+                 bg="#00aa00", fg="white", relief=tk.FLAT, padx=15, pady=8,
+                 cursor="hand2", command=format_xml_text).pack(side=tk.LEFT, padx=5)
+        
+        formatter_output = tk.Text(formatter_tab, height=10, font=("Consolas", 10),
+                                   bg=self.bg_color, fg=self.text_color, wrap=tk.WORD)
+        formatter_output.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        
+        # Tab 3: Regex Tester
+        regex_tab = tk.Frame(notebook, bg=self.bg_color)
+        notebook.add(regex_tab, text="Regex")
+        
+        regex_pattern_frame = tk.Frame(regex_tab, bg=self.bg_color)
+        regex_pattern_frame.pack(fill=tk.X, padx=10, pady=10)
+        
+        tk.Label(regex_pattern_frame, text="Pattern:", font=("Segoe UI", 10, "bold"),
+                bg=self.bg_color, fg=self.text_color).pack(side=tk.LEFT, padx=5)
+        
+        regex_pattern = tk.Entry(regex_pattern_frame, font=("Consolas", 11),
+                                bg=self.secondary_bg, fg=self.text_color, width=50)
+        regex_pattern.pack(side=tk.LEFT, padx=5, fill=tk.X, expand=True)
+        
+        regex_test_text = tk.Text(regex_tab, height=8, font=("Consolas", 10),
+                                  bg=self.bg_color, fg=self.text_color, wrap=tk.WORD)
+        regex_test_text.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
+        
+        def test_regex():
+            pattern = regex_pattern.get()
+            text = regex_test_text.get("1.0", "end-1c")
+            
+            # Debug output
+            print(f"DEBUG - Pattern: '{pattern}'")
+            print(f"DEBUG - Text length: {len(text)}")
+            print(f"DEBUG - Text preview: '{text[:100]}'")
+            
+            result = ToolsCollection.test_regex(pattern, text)
+            
+            regex_results.delete("1.0", "end")
+            if result['success']:
+                matches = result['matches']
+                regex_results.insert("1.0", f"Found {len(matches)} matches:\n\n")
+                for i, match in enumerate(matches, 1):
+                    regex_results.insert("end", f"Match {i}: '{match['full']}' at position {match['start']}-{match['end']}\n")
+                    if match['groups']:
+                        regex_results.insert("end", f"  Groups: {match['groups']}\n")
+            else:
+                regex_results.insert("1.0", f"Error: {result['error']}")
+        
+        tk.Button(regex_tab, text="Test Regex", font=("Segoe UI", 10, "bold"),
+                 bg=self.accent_color, fg="white", relief=tk.FLAT, padx=20, pady=10,
+                 cursor="hand2", command=test_regex).pack(pady=5)
+        
+        regex_results = tk.Text(regex_tab, height=8, font=("Consolas", 10),
+                                bg=self.secondary_bg, fg=self.text_color, wrap=tk.WORD)
+        regex_results.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        
+        # Tab 4: Password Generator
+        password_tab = tk.Frame(notebook, bg=self.bg_color)
+        notebook.add(password_tab, text="Password")
+        
+        pass_frame = tk.Frame(password_tab, bg=self.secondary_bg)
+        pass_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
+        
+        tk.Label(pass_frame, text="Password Generator", font=("Segoe UI", 14, "bold"),
+                bg=self.secondary_bg, fg=self.text_color).pack(pady=20)
+        
+        # Length slider
+        length_frame = tk.Frame(pass_frame, bg=self.secondary_bg)
+        length_frame.pack(fill=tk.X, padx=20, pady=10)
+        
+        tk.Label(length_frame, text="Length:", font=("Segoe UI", 10),
+                bg=self.secondary_bg, fg=self.text_color).pack(side=tk.LEFT, padx=5)
+        
+        length_var = tk.IntVar(value=16)
+        length_label = tk.Label(length_frame, text="16", font=("Segoe UI", 10, "bold"),
+                               bg=self.secondary_bg, fg=self.accent_color)
+        length_label.pack(side=tk.RIGHT, padx=5)
+        
+        def update_length(val):
+            length_label.config(text=str(int(float(val))))
+        
+        length_slider = tk.Scale(length_frame, from_=8, to=64, orient=tk.HORIZONTAL,
+                                variable=length_var, command=update_length,
+                                bg=self.secondary_bg, fg=self.text_color,
+                                highlightthickness=0)
+        length_slider.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=10)
+        
+        # Options
+        options_frame = tk.Frame(pass_frame, bg=self.secondary_bg)
+        options_frame.pack(fill=tk.X, padx=20, pady=10)
+        
+        use_upper = tk.BooleanVar(value=True)
+        use_lower = tk.BooleanVar(value=True)
+        use_digits = tk.BooleanVar(value=True)
+        use_symbols = tk.BooleanVar(value=True)
+        
+        tk.Checkbutton(options_frame, text="Uppercase (A-Z)", variable=use_upper,
+                      bg=self.secondary_bg, fg=self.text_color, selectcolor=self.bg_color,
+                      font=("Segoe UI", 10)).pack(anchor="w", pady=2)
+        tk.Checkbutton(options_frame, text="Lowercase (a-z)", variable=use_lower,
+                      bg=self.secondary_bg, fg=self.text_color, selectcolor=self.bg_color,
+                      font=("Segoe UI", 10)).pack(anchor="w", pady=2)
+        tk.Checkbutton(options_frame, text="Digits (0-9)", variable=use_digits,
+                      bg=self.secondary_bg, fg=self.text_color, selectcolor=self.bg_color,
+                      font=("Segoe UI", 10)).pack(anchor="w", pady=2)
+        tk.Checkbutton(options_frame, text="Symbols (!@#$%)", variable=use_symbols,
+                      bg=self.secondary_bg, fg=self.text_color, selectcolor=self.bg_color,
+                      font=("Segoe UI", 10)).pack(anchor="w", pady=2)
+        
+        # Generate button
+        def generate_password():
+            password = ToolsCollection.generate_password(
+                length=length_var.get(),
+                use_upper=use_upper.get(),
+                use_lower=use_lower.get(),
+                use_digits=use_digits.get(),
+                use_symbols=use_symbols.get()
+            )
+            pass_output.delete("1.0", "end")
+            pass_output.insert("1.0", password)
+        
+        tk.Button(pass_frame, text="🎲 Generate Password", font=("Segoe UI", 11, "bold"),
+                 bg=self.accent_color, fg="white", relief=tk.FLAT, padx=30, pady=12,
+                 cursor="hand2", command=generate_password).pack(pady=15)
+        
+        pass_output = tk.Text(pass_frame, height=3, font=("Consolas", 14, "bold"),
+                             bg=self.bg_color, fg="#00ff00", wrap=tk.WORD)
+        pass_output.pack(fill=tk.X, padx=20, pady=10)
+        
+        def copy_password():
+            password = pass_output.get("1.0", "end-1c")
+            self.root.clipboard_clear()
+            self.root.clipboard_append(password)
+            self.show_notification("Password copied!", "success")
+        
+        tk.Button(pass_frame, text="📋 Copy to Clipboard", font=("Segoe UI", 9),
+                 bg=self.secondary_bg, fg=self.text_color, relief=tk.FLAT, padx=20, pady=8,
+                 cursor="hand2", command=copy_password).pack(pady=5)
+        
+        # Tab 5: Lorem Ipsum Generator
+        lorem_tab = tk.Frame(notebook, bg=self.bg_color)
+        notebook.add(lorem_tab, text="Lorem Ipsum")
+        
+        lorem_frame = tk.Frame(lorem_tab, bg=self.secondary_bg)
+        lorem_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
+        
+        tk.Label(lorem_frame, text="Lorem Ipsum Generator", font=("Segoe UI", 14, "bold"),
+                bg=self.secondary_bg, fg=self.text_color).pack(pady=20)
+        
+        para_frame = tk.Frame(lorem_frame, bg=self.secondary_bg)
+        para_frame.pack(fill=tk.X, padx=20, pady=10)
+        
+        tk.Label(para_frame, text="Paragraphs:", font=("Segoe UI", 10),
+                bg=self.secondary_bg, fg=self.text_color).pack(side=tk.LEFT, padx=5)
+        
+        para_var = tk.IntVar(value=3)
+        para_spin = tk.Spinbox(para_frame, from_=1, to=10, textvariable=para_var,
+                              font=("Segoe UI", 10), width=10)
+        para_spin.pack(side=tk.LEFT, padx=10)
+        
+        def generate_lorem():
+            lorem = ToolsCollection.generate_lorem_ipsum(para_var.get())
+            lorem_output.delete("1.0", "end")
+            lorem_output.insert("1.0", lorem)
+        
+        tk.Button(para_frame, text="Generate", font=("Segoe UI", 10, "bold"),
+                 bg=self.accent_color, fg="white", relief=tk.FLAT, padx=20, pady=8,
+                 cursor="hand2", command=generate_lorem).pack(side=tk.LEFT, padx=10)
+        
+        lorem_output = tk.Text(lorem_frame, font=("Segoe UI", 10),
+                              bg=self.bg_color, fg=self.text_color, wrap=tk.WORD)
+        lorem_output.pack(fill=tk.BOTH, expand=True, padx=20, pady=10)
+        
+        # Tab 6: HTTP Request Tool
+        http_tab = tk.Frame(notebook, bg=self.bg_color)
+        notebook.add(http_tab, text="HTTP")
+        
+        http_controls = tk.Frame(http_tab, bg=self.secondary_bg)
+        http_controls.pack(fill=tk.X, padx=10, pady=10)
+        
+        # Method selector
+        method_frame = tk.Frame(http_controls, bg=self.secondary_bg)
+        method_frame.pack(side=tk.LEFT, padx=5)
+        
+        method_var = tk.StringVar(value="GET")
+        for method in ["GET", "POST", "PUT", "DELETE"]:
+            tk.Radiobutton(method_frame, text=method, variable=method_var, value=method,
+                          bg=self.secondary_bg, fg=self.text_color, selectcolor=self.bg_color,
+                          font=("Segoe UI", 9)).pack(side=tk.LEFT, padx=2)
+        
+        # URL input
+        url_frame = tk.Frame(http_tab, bg=self.bg_color)
+        url_frame.pack(fill=tk.X, padx=10, pady=5)
+        
+        tk.Label(url_frame, text="URL:", font=("Segoe UI", 10, "bold"),
+                bg=self.bg_color, fg=self.text_color).pack(side=tk.LEFT, padx=5)
+        
+        url_entry = tk.Entry(url_frame, font=("Consolas", 10),
+                            bg=self.secondary_bg, fg=self.text_color)
+        url_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=5)
+        url_entry.insert(0, "https://api.github.com/zen")
+        
+        # Body input
+        tk.Label(http_tab, text="Request Body (for POST/PUT):", font=("Segoe UI", 9),
+                bg=self.bg_color, fg=self.text_color).pack(anchor="w", padx=10, pady=(10, 0))
+        
+        http_body = tk.Text(http_tab, height=5, font=("Consolas", 9),
+                           bg=self.secondary_bg, fg=self.text_color, wrap=tk.WORD)
+        http_body.pack(fill=tk.X, padx=10, pady=5)
+        
+        def send_request():
+            url = url_entry.get()
+            method = method_var.get()
+            body = http_body.get("1.0", "end-1c") if http_body.get("1.0", "end-1c").strip() else None
+            
+            http_response.delete("1.0", "end")
+            http_response.insert("1.0", "⏳ Sending request...\n")
+            
+            def do_request():
+                result = HTTPClient.make_request(url, method, body=body)
+                
+                response_text = f"Status: {result['status']}\n\n"
+                if result['success']:
+                    response_text += f"✓ Success\n\n"
+                    response_text += f"Response:\n{result['body']}"
+                else:
+                    response_text += f"✗ Error: {result['error']}\n\n"
+                    if result['body']:
+                        response_text += f"Response:\n{result['body']}"
+                
+                self.root.after(0, lambda: http_response.delete("1.0", "end"))
+                self.root.after(0, lambda: http_response.insert("1.0", response_text))
+            
+            threading.Thread(target=do_request, daemon=True).start()
+        
+        tk.Button(http_tab, text="➤ Send Request", font=("Segoe UI", 10, "bold"),
+                 bg=self.accent_color, fg="white", relief=tk.FLAT, padx=25, pady=10,
+                 cursor="hand2", command=send_request).pack(pady=10)
+        
+        tk.Label(http_tab, text="Response:", font=("Segoe UI", 9, "bold"),
+                bg=self.bg_color, fg=self.text_color).pack(anchor="w", padx=10)
+        
+        http_response = tk.Text(http_tab, font=("Consolas", 9),
+                               bg=self.secondary_bg, fg=self.text_color, wrap=tk.WORD)
+        http_response.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        
+        self.update_status("Tools loaded")
+    
+    def show_dll_injector(self):
+        """Show DLL Injector page for client-side injection"""
+        if not hasattr(self, 'dll_injector'):
+            self.dll_injector = DLLInjector()
+        
+        container = tk.Frame(self.page_container, bg=self.bg_color)
+        container.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
+        
+        # Header
+        header_frame = tk.Frame(container, bg=self.bg_color)
+        header_frame.pack(fill=tk.X, pady=(0, 20))
+        
+        tk.Label(header_frame, text="💉 DLL Injector",
+                font=("Segoe UI", 20, "bold"),
+                bg=self.bg_color, fg=self.text_color).pack(side=tk.LEFT)
+        
+        tk.Label(header_frame, text="Client-Side Injection Tool",
+                font=("Segoe UI", 10),
+                bg=self.bg_color, fg="#666666").pack(side=tk.LEFT, padx=(15, 0))
+        
+        # Warning banner
+        warning_frame = tk.Frame(container, bg="#4d3319", highlightbackground="#cc8800", 
+                                highlightthickness=2)
+        warning_frame.pack(fill=tk.X, pady=(0, 20))
+        
+        tk.Label(warning_frame, text="⚠️ WARNING",
+                font=("Segoe UI", 11, "bold"),
+                bg="#4d3319", fg="#ffaa00").pack(anchor="w", padx=15, pady=(10, 5))
+        
+        tk.Label(warning_frame, 
+                text="Only inject DLLs into processes you own. Requires Administrator privileges.",
+                font=("Segoe UI", 9),
+                bg="#4d3319", fg="#dddddd", wraplength=800).pack(anchor="w", padx=15, pady=(0, 10))
+        
+        # Main content - Split into 2 columns
+        content_frame = tk.Frame(container, bg=self.bg_color)
+        content_frame.pack(fill=tk.BOTH, expand=True)
+        
+        # Left column - Injection controls
+        left_panel = tk.Frame(content_frame, bg="#1e1e1e", highlightbackground="#333333",
+                             highlightthickness=1)
+        left_panel.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 10))
+        
+        tk.Label(left_panel, text="🎯 Injection Controls",
+                font=("Segoe UI", 12, "bold"),
+                bg="#1e1e1e", fg=self.text_color).pack(anchor="w", padx=20, pady=15)
+        
+        # Process selection
+        process_frame = tk.Frame(left_panel, bg="#1e1e1e")
+        process_frame.pack(fill=tk.X, padx=20, pady=(0, 15))
+        
+        tk.Label(process_frame, text="Target Process:",
+                font=("Segoe UI", 10, "bold"),
+                bg="#1e1e1e", fg="#aaaaaa").pack(anchor="w", pady=(0, 5))
+        
+        # Search for process
+        search_frame = tk.Frame(process_frame, bg="#1e1e1e")
+        search_frame.pack(fill=tk.X, pady=(0, 5))
+        
+        self.dll_process_search_var = tk.StringVar()
+        self.dll_process_search_var.trace('w', lambda *args: self.filter_dll_process_list())
+        
+        search_entry = tk.Entry(search_frame, textvariable=self.dll_process_search_var,
+                               font=("Segoe UI", 10),
+                               bg="#0d0d0d", fg=self.text_color,
+                               insertbackground=self.accent_color,
+                               relief=tk.FLAT, bd=0)
+        search_entry.pack(fill=tk.X, ipady=6, ipadx=10)
+        
+        # Process dropdown
+        self.dll_process_var = tk.StringVar()
+        self.dll_process_combo = ttk.Combobox(process_frame, textvariable=self.dll_process_var,
+                                             width=50, state="readonly", font=("Segoe UI", 10))
+        self.dll_process_combo.pack(fill=tk.X, ipady=6)
+        
+        # Store all processes
+        self.dll_all_processes = []
+        
+        # Refresh button
+        refresh_btn = tk.Button(process_frame, text="🔄 Refresh Processes",
+                               font=("Segoe UI", 10, "bold"),
+                               bg="#2d2d2d", fg="white",
+                               relief=tk.FLAT, cursor="hand2",
+                               command=self.refresh_dll_process_list)
+        refresh_btn.pack(fill=tk.X, pady=(5, 0), ipady=8)
+        self.add_hover_effect(refresh_btn, "#3d3d3d", "#2d2d2d")
+        
+        # DLL path selection
+        dll_frame = tk.Frame(left_panel, bg="#1e1e1e")
+        dll_frame.pack(fill=tk.X, padx=20, pady=(0, 15))
+        
+        tk.Label(dll_frame, text="DLL File Path:",
+                font=("Segoe UI", 10, "bold"),
+                bg="#1e1e1e", fg="#aaaaaa").pack(anchor="w", pady=(0, 5))
+        
+        path_frame = tk.Frame(dll_frame, bg="#1e1e1e")
+        path_frame.pack(fill=tk.X)
+        
+        self.dll_path_var = tk.StringVar()
+        dll_entry = tk.Entry(path_frame, textvariable=self.dll_path_var,
+                            font=("Consolas", 10),
+                            bg="#0d0d0d", fg=self.text_color,
+                            insertbackground=self.accent_color,
+                            relief=tk.FLAT, bd=0)
+        dll_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, ipady=6, ipadx=10)
+        
+        browse_btn = tk.Button(path_frame, text="📁",
+                              font=("Segoe UI", 12),
+                              bg="#2d2d2d", fg="white",
+                              relief=tk.FLAT, cursor="hand2",
+                              padx=15, pady=5,
+                              command=self.browse_dll_file)
+        browse_btn.pack(side=tk.RIGHT, padx=(5, 0))
+        self.add_hover_effect(browse_btn, "#3d3d3d", "#2d2d2d")
+        
+        # Injection buttons
+        btn_frame = tk.Frame(left_panel, bg="#1e1e1e")
+        btn_frame.pack(fill=tk.X, padx=20, pady=(0, 20))
+        
+        inject_btn = tk.Button(btn_frame, text="💉 Inject DLL",
+                              font=("Segoe UI", 12, "bold"),
+                              bg=self.accent_color, fg="white",
+                              relief=tk.FLAT, cursor="hand2",
+                              command=self.perform_dll_injection)
+        inject_btn.pack(fill=tk.X, ipady=12, pady=(0, 8))
+        self.add_hover_effect(inject_btn, "#0066cc", self.accent_color)
+        
+        eject_btn = tk.Button(btn_frame, text="⏏️ Eject DLL",
+                             font=("Segoe UI", 11, "bold"),
+                             bg="#cc3333", fg="white",
+                             relief=tk.FLAT, cursor="hand2",
+                             command=self.perform_dll_ejection)
+        eject_btn.pack(fill=tk.X, ipady=10)
+        self.add_hover_effect(eject_btn, "#dd4444", "#cc3333")
+        
+        # Right column - Loaded modules
+        right_panel = tk.Frame(content_frame, bg="#1e1e1e", highlightbackground="#333333",
+                              highlightthickness=1)
+        right_panel.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True, padx=(10, 0))
+        
+        tk.Label(right_panel, text="📚 Loaded Modules",
+                font=("Segoe UI", 12, "bold"),
+                bg="#1e1e1e", fg=self.text_color).pack(anchor="w", padx=20, pady=15)
+        
+        # Modules list
+        list_container = tk.Frame(right_panel, bg="#1e1e1e")
+        list_container.pack(fill=tk.BOTH, expand=True, padx=15, pady=(0, 15))
+        
+        list_scroll = tk.Scrollbar(list_container, **self.get_scrollbar_config())
+        list_scroll.pack(side=tk.RIGHT, fill=tk.Y)
+        
+        self.dll_modules_list = tk.Listbox(list_container,
+                                           font=("Consolas", 9),
+                                           bg="#0d0d0d", fg=self.text_color,
+                                           selectbackground=self.accent_color,
+                                           selectforeground="white",
+                                           relief=tk.FLAT, bd=0,
+                                           highlightthickness=0,
+                                           yscrollcommand=list_scroll.set)
+        self.dll_modules_list.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        list_scroll.config(command=self.dll_modules_list.yview)
+        
+        # List modules button
+        list_btn = tk.Button(right_panel, text="🔍 List Modules in Selected Process",
+                            font=("Segoe UI", 10, "bold"),
+                            bg="#2d2d2d", fg="white",
+                            relief=tk.FLAT, cursor="hand2",
+                            command=self.list_process_modules)
+        list_btn.pack(fill=tk.X, padx=15, pady=(0, 15), ipady=10)
+        self.add_hover_effect(list_btn, "#3d3d3d", "#2d2d2d")
+        
+        # Initialize process list
+        self.refresh_dll_process_list()
+        self.update_status("DLL Injector ready")
+    
+    def filter_dll_process_list(self):
+        """Filter DLL injector process list based on search"""
+        try:
+            search_term = self.dll_process_search_var.get().lower()
+            if not search_term:
+                self.dll_process_combo['values'] = self.dll_all_processes
+            else:
+                filtered = [p for p in self.dll_all_processes if search_term in p.lower()]
+                self.dll_process_combo['values'] = filtered
+        except Exception as e:
+            print(f"Error filtering processes: {e}")
+    
+    def refresh_dll_process_list(self):
+        """Refresh the list of processes for DLL injection"""
+        try:
+            import psutil
+            processes = [(proc.info['pid'], proc.info['name']) 
+                        for proc in psutil.process_iter(['pid', 'name'])]
+            self.dll_all_processes = [f"{pid}: {name}" for pid, name in processes]
+            self.dll_process_combo['values'] = self.dll_all_processes
+            self.show_notification(f"Refreshed: {len(processes)} processes", "info")
+        except Exception as e:
+            self.show_notification(f"Error: {e}", "error")
+    
+    def browse_dll_file(self):
+        """Browse for DLL file"""
+        from tkinter import filedialog
+        filepath = filedialog.askopenfilename(
+            title="Select DLL File",
+            filetypes=[("DLL files", "*.dll"), ("All files", "*.*")]
+        )
+        if filepath:
+            self.dll_path_var.set(filepath)
+    
+    def perform_dll_injection(self):
+        """Perform DLL injection"""
+        try:
+            selection = self.dll_process_var.get()
+            dll_path = self.dll_path_var.get()
+            
+            if not selection:
+                self.show_notification("Please select a target process", "warning")
+                return
+            
+            if not dll_path:
+                self.show_notification("Please select a DLL file", "warning")
+                return
+            
+            # Extract PID
+            pid = int(selection.split(":")[0])
+            
+            # Perform injection
+            self.update_status("Injecting DLL...")
+            success, message = self.dll_injector.inject_dll(pid, dll_path)
+            
+            if success:
+                self.show_notification(message, "success")
+                self.update_status("✓ DLL injected successfully")
+            else:
+                self.show_notification(message, "error")
+                self.update_status("✗ Injection failed")
+                
+        except Exception as e:
+            self.show_notification(f"Injection error: {e}", "error")
+            self.update_status(f"✗ Error: {e}")
+    
+    def perform_dll_ejection(self):
+        """Eject DLL from process"""
+        try:
+            selection = self.dll_process_var.get()
+            
+            if not selection:
+                self.show_notification("Please select a target process", "warning")
+                return
+            
+            # Get selected module from list
+            selected_indices = self.dll_modules_list.curselection()
+            if not selected_indices:
+                self.show_notification("Please select a module to eject from the list", "warning")
+                return
+            
+            module_text = self.dll_modules_list.get(selected_indices[0])
+            dll_name = module_text.split(" - ")[0] if " - " in module_text else module_text
+            
+            # Extract PID
+            pid = int(selection.split(":")[0])
+            
+            # Perform ejection
+            self.update_status("Ejecting DLL...")
+            success, message = self.dll_injector.eject_dll(pid, dll_name)
+            
+            if success:
+                self.show_notification(message, "success")
+                self.update_status("✓ DLL ejected successfully")
+                self.list_process_modules()  # Refresh list
+            else:
+                self.show_notification(message, "error")
+                self.update_status("✗ Ejection failed")
+                
+        except Exception as e:
+            self.show_notification(f"Ejection error: {e}", "error")
+            self.update_status(f"✗ Error: {e}")
+    
+    def list_process_modules(self):
+        """List all modules loaded in selected process"""
+        try:
+            selection = self.dll_process_var.get()
+            
+            if not selection:
+                self.show_notification("Please select a process first", "warning")
+                return
+            
+            # Extract PID
+            pid = int(selection.split(":")[0])
+            
+            # Get modules
+            modules = self.dll_injector.list_loaded_modules(pid)
+            
+            # Display
+            self.dll_modules_list.delete(0, tk.END)
+            if modules:
+                for module_name, module_path in modules:
+                    self.dll_modules_list.insert(tk.END, f"{module_name} - {module_path}")
+                self.show_notification(f"Found {len(modules)} modules", "success")
+            else:
+                self.dll_modules_list.insert(tk.END, "No modules found or access denied")
+                self.show_notification("No modules found", "info")
+                
+        except Exception as e:
+            self.show_notification(f"Error listing modules: {e}", "error")
+    
+    def show_process_inspector(self):
+        """Show Process Inspector - Debug CipherV2 itself"""
+        if not hasattr(self, 'process_inspector'):
+            self.process_inspector = ProcessInspector()
+        
+        container = tk.Frame(self.page_container, bg=self.bg_color)
+        container.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
+        
+        # Header
+        header_frame = tk.Frame(container, bg=self.bg_color)
+        header_frame.pack(fill=tk.X, pady=(0, 20))
+        
+        tk.Label(header_frame, text="🔬 Process Inspector",
+                font=("Segoe UI", 20, "bold"),
+                bg=self.bg_color, fg=self.text_color).pack(side=tk.LEFT)
+        
+        tk.Label(header_frame, text="Debug CipherV2 with CipherV2",
+                font=("Segoe UI", 10),
+                bg=self.bg_color, fg="#666666").pack(side=tk.LEFT, padx=(15, 0))
+        
+        # Info banner
+        info_frame = tk.Frame(container, bg="#193d4d", highlightbackground="#0088cc", 
+                             highlightthickness=2)
+        info_frame.pack(fill=tk.X, pady=(0, 20))
+        
+        tk.Label(info_frame, text="ℹ️ SELF-INSPECTION",
+                font=("Segoe UI", 11, "bold"),
+                bg="#193d4d", fg="#00aaff").pack(anchor="w", padx=15, pady=(10, 5))
+        
+        tk.Label(info_frame, 
+                text="Analyzing CipherV2's own process - Educational and debugging purposes only.",
+                font=("Segoe UI", 9),
+                bg="#193d4d", fg="#dddddd", wraplength=800).pack(anchor="w", padx=15, pady=(0, 10))
+        
+        # Create notebook for different inspection tabs
+        notebook = ttk.Notebook(container)
+        notebook.pack(fill=tk.BOTH, expand=True)
+        
+        # Tab 1: Process Info
+        info_tab = tk.Frame(notebook, bg=self.bg_color)
+        notebook.add(info_tab, text="Process Info")
+        
+        info_text = tk.Text(info_tab, font=("Consolas", 10),
+                           bg=self.secondary_bg, fg=self.text_color,
+                           wrap=tk.WORD)
+        info_text.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        
+        # Get and display process info
+        info = self.process_inspector.get_self_info()
+        info_content = f"""CIPHERV2 PROCESS INFORMATION
+{'='*60}
+
+Process ID (PID): {info.get('pid', 'N/A')}
+Process Name: {info.get('name', 'N/A')}
+Executable Path: {info.get('exe', 'N/A')}
+Working Directory: {info.get('cwd', 'N/A')}
+Status: {info.get('status', 'N/A')}
+Created: {info.get('create_time', 'N/A')}
+
+RESOURCE USAGE:
+{'='*60}
+Threads: {info.get('num_threads', 'N/A')}
+CPU Usage: {info.get('cpu_percent', 0):.2f}%
+Memory (RSS): {self.process_inspector.format_bytes(info.get('memory_info', type('obj', (), {'rss': 0})).rss)}
+Memory (VMS): {self.process_inspector.format_bytes(info.get('memory_info', type('obj', (), {'vms': 0})).vms)}
+Memory Percent: {info.get('memory_percent', 0):.2f}%
+
+{'='*60}
+"""
+        info_text.insert("1.0", info_content)
+        info_text.config(state=tk.DISABLED)
+        
+        # Tab 2: Memory Maps
+        memory_tab = tk.Frame(notebook, bg=self.bg_color)
+        notebook.add(memory_tab, text="Memory Maps")
+        
+        memory_frame = tk.Frame(memory_tab, bg=self.bg_color)
+        memory_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        
+        memory_scroll = tk.Scrollbar(memory_frame, **self.get_scrollbar_config())
+        memory_scroll.pack(side=tk.RIGHT, fill=tk.Y)
+        
+        memory_list = tk.Listbox(memory_frame, font=("Consolas", 9),
+                                bg=self.secondary_bg, fg=self.text_color,
+                                yscrollcommand=memory_scroll.set)
+        memory_list.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        memory_scroll.config(command=memory_list.yview)
+        
+        maps = self.process_inspector.get_memory_maps()
+        for mmap in maps[:50]:  # Limit to first 50
+            if 'error' not in mmap:
+                memory_list.insert(tk.END, 
+                    f"{mmap.get('path', 'N/A')[:80]} - {self.process_inspector.format_bytes(mmap.get('rss', 0))}")
+        
+        # Tab 3: Loaded Modules
+        modules_tab = tk.Frame(notebook, bg=self.bg_color)
+        notebook.add(modules_tab, text="Python Modules")
+        
+        modules_frame = tk.Frame(modules_tab, bg=self.bg_color)
+        modules_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        
+        modules_scroll = tk.Scrollbar(modules_frame, **self.get_scrollbar_config())
+        modules_scroll.pack(side=tk.RIGHT, fill=tk.Y)
+        
+        modules_list = tk.Listbox(modules_frame, font=("Consolas", 9),
+                                 bg=self.secondary_bg, fg=self.text_color,
+                                 yscrollcommand=modules_scroll.set)
+        modules_list.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        modules_scroll.config(command=modules_list.yview)
+        
+        modules = self.process_inspector.get_loaded_modules()
+        for module in modules[:100]:  # Limit to first 100
+            if 'error' not in module:
+                modules_list.insert(tk.END, 
+                    f"{module.get('name', 'N/A')[:40]:40} - {module.get('file', 'N/A')[:60]}")
+        
+        # Tab 4: Threads
+        threads_tab = tk.Frame(notebook, bg=self.bg_color)
+        notebook.add(threads_tab, text="Threads")
+        
+        threads_text = tk.Text(threads_tab, font=("Consolas", 10),
+                              bg=self.secondary_bg, fg=self.text_color,
+                              wrap=tk.NONE)
+        threads_text.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        
+        threads = self.process_inspector.get_threads()
+        threads_content = f"ACTIVE THREADS ({len(threads)})\n{'='*60}\n\n"
+        for i, thread in enumerate(threads, 1):
+            if 'error' not in thread:
+                threads_content += f"Thread #{i}:\n"
+                threads_content += f"  ID: {thread.get('id', 'N/A')}\n"
+                threads_content += f"  User Time: {thread.get('user_time', 0):.4f}s\n"
+                threads_content += f"  System Time: {thread.get('system_time', 0):.4f}s\n\n"
+        
+        threads_text.insert("1.0", threads_content)
+        threads_text.config(state=tk.DISABLED)
+        
+        # Tab 5: Process Tree
+        tree_tab = tk.Frame(notebook, bg=self.bg_color)
+        notebook.add(tree_tab, text="Process Tree")
+        
+        tree_text = tk.Text(tree_tab, font=("Consolas", 11),
+                           bg=self.secondary_bg, fg=self.text_color,
+                           wrap=tk.WORD)
+        tree_text.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        
+        tree = self.process_inspector.get_process_tree()
+        tree_content = f"""PROCESS TREE
+{'='*60}
+
+"""
+        if tree.get('parent'):
+            tree_content += f"Parent Process:\n"
+            tree_content += f"  └── PID {tree['parent']['pid']}: {tree['parent']['name']}\n\n"
+        
+        tree_content += f"Current Process (CipherV2):\n"
+        tree_content += f"  └── PID {tree['current']['pid']}: {tree['current']['name']}\n\n"
+        
+        if tree.get('children'):
+            tree_content += f"Child Processes ({len(tree['children'])}):\n"
+            for child in tree['children']:
+                tree_content += f"      └── PID {child['pid']}: {child['name']}\n"
+        else:
+            tree_content += "No child processes\n"
+        
+        tree_text.insert("1.0", tree_content)
+        tree_text.config(state=tk.DISABLED)
+        
+        # Tab 6: Open Files
+        files_tab = tk.Frame(notebook, bg=self.bg_color)
+        notebook.add(files_tab, text="Open Files")
+        
+        files_frame = tk.Frame(files_tab, bg=self.bg_color)
+        files_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        
+        files_scroll = tk.Scrollbar(files_frame, **self.get_scrollbar_config())
+        files_scroll.pack(side=tk.RIGHT, fill=tk.Y)
+        
+        files_list = tk.Listbox(files_frame, font=("Consolas", 9),
+                               bg=self.secondary_bg, fg=self.text_color,
+                               yscrollcommand=files_scroll.set)
+        files_list.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        files_scroll.config(command=files_list.yview)
+        
+        files = self.process_inspector.get_open_files()
+        if files:
+            for f in files:
+                if 'error' not in f:
+                    files_list.insert(tk.END, f"FD {f.get('fd', 'N/A')}: {f.get('path', 'N/A')}")
+        else:
+            files_list.insert(tk.END, "No open files or access denied")
+        
+        # Bottom controls
+        controls_frame = tk.Frame(container, bg=self.bg_color)
+        controls_frame.pack(fill=tk.X, pady=(10, 0))
+        
+        refresh_btn = tk.Button(controls_frame, text="🔄 Refresh Data",
+                               font=("Segoe UI", 11, "bold"),
+                               bg=self.accent_color, fg="white",
+                               relief=tk.FLAT, cursor="hand2",
+                               padx=30, pady=10,
+                               command=lambda: self.show_process_inspector())
+        refresh_btn.pack(side=tk.LEFT, padx=(0, 10))
+        self.add_hover_effect(refresh_btn, "#0066cc", self.accent_color)
+        
+        export_btn = tk.Button(controls_frame, text="💾 Export Report",
+                              font=("Segoe UI", 11),
+                              bg="#2d2d2d", fg="white",
+                              relief=tk.FLAT, cursor="hand2",
+                              padx=30, pady=10,
+                              command=self.export_inspection_report)
+        export_btn.pack(side=tk.LEFT)
+        self.add_hover_effect(export_btn, "#3d3d3d", "#2d2d2d")
+        
+        self.update_status("Process Inspector loaded - analyzing CipherV2")
+    
+    def export_inspection_report(self):
+        """Export process inspection report to file"""
+        try:
+            from tkinter import filedialog
+            import json
+            from datetime import datetime
+            
+            # Gather all data
+            report = {
+                'timestamp': datetime.now().isoformat(),
+                'process_info': self.process_inspector.get_self_info(),
+                'memory_maps': self.process_inspector.get_memory_maps()[:50],
+                'threads': self.process_inspector.get_threads(),
+                'process_tree': self.process_inspector.get_process_tree(),
+                'loaded_modules': [m['name'] for m in self.process_inspector.get_loaded_modules()[:100]],
+            }
+            
+            # Ask where to save
+            filepath = filedialog.asksaveasfilename(
+                defaultextension=".json",
+                filetypes=[("JSON files", "*.json"), ("Text files", "*.txt"), ("All files", "*.*")],
+                initialfile=f"cipherv2_inspection_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+            )
+            
+            if filepath:
+                with open(filepath, 'w') as f:
+                    json.dump(report, f, indent=2, default=str)
+                
+                self.show_notification(f"Report saved: {filepath}", "success")
+                self.update_status(f"Exported inspection report")
+        except Exception as e:
+            self.show_notification(f"Export error: {e}", "error")
     
     def show_ai_assistant(self):
         """Show AI Assistant page with Hugging Face integration"""
@@ -2443,14 +3462,14 @@ Provide your answer. If you suggest code, wrap it in ```python code blocks. [/IN
             pass
     
     def show_settings(self):
-        """Show settings page with toggles and options"""
+        """Show settings page with organized sections in columns"""
         container = tk.Frame(self.page_container, bg=self.bg_color)
         container.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
         
-        title = tk.Label(container, text="Settings",
-                        font=("Segoe UI", 16, "bold"),
+        title = tk.Label(container, text="⚙️ Settings",
+                        font=("Segoe UI", 20, "bold"),
                         bg=self.bg_color, fg=self.text_color)
-        title.pack(anchor="w", pady=(0, 10))
+        title.pack(anchor="w", pady=(0, 5))
         
         desc = tk.Label(container, 
                        text="Configure application preferences for a personalized experience",
@@ -2478,47 +3497,79 @@ Provide your answer. If you suggest code, wrap it in ```python code blocks. [/IN
         canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
         
-        # Settings sections - theme controls moved to Theme Customizer
-        settings_data = [
-            # Editor
-            ("Syntax Highlighting", "Highlight code syntax with colors"),
-            ("Line Numbers", "Show line numbers in editor"),
-            ("Auto-complete", "Enable intelligent code completion"),
-            ("Auto-indent", "Automatically indent code blocks"),
-            ("Word Wrap", "Wrap long lines in editor"),
-            ("Bracket Matching", "Highlight matching brackets"),
-            ("Code Folding", "Allow collapsing code blocks"),
-            ("Minimap", "Show code minimap on right side"),
-            ("Font Size", "Adjust editor font size (8-24)"),
-            
-            # Behavior
-            ("Auto-save", "Automatically save work every 60s"),
-            ("Notifications", "Show notification popups"),
-            ("Sound Effects", "Enable UI sound feedback"),
-            ("Spell Check", "Check spelling in comments/strings"),
-            ("Tab Size", "Use 4 spaces for tabs"),
-            ("Trim Whitespace", "Remove trailing spaces on save"),
-            ("Format on Save", "Auto-format code when saving"),
-            
-            # Advanced
-            ("Debug Mode", "Show detailed error messages"),
-            ("Telemetry", "Send anonymous usage data"),
-            ("Auto-update", "Check for updates automatically"),
-            ("Experimental Features", "Enable beta features"),
-            ("Performance Mode", "Optimize for speed"),
-            ("Memory Limit", "Set max memory usage (MB)"),
-            ("GPU Acceleration", "Use hardware acceleration"),
-            
-            # Privacy & Security
-            ("Save History", "Remember command history"),
-            ("Remember Session", "Restore last session on startup"),
-            ("Encrypted Storage", "Encrypt saved files"),
-            ("Password Protection", "Require password to open"),
-            ("Clear on Exit", "Clear temporary files on close"),
-        ]
+        # Settings organized by sections with 2-column layout
+        settings_sections = {
+            "📝 Editor": [
+                ("Syntax Highlighting", "Highlight code syntax with colors"),
+                ("Line Numbers", "Show line numbers in editor"),
+                ("Auto-complete", "Enable intelligent code completion"),
+                ("Auto-indent", "Automatically indent code blocks"),
+                ("Word Wrap", "Wrap long lines in editor"),
+                ("Bracket Matching", "Highlight matching brackets"),
+                ("Code Folding", "Allow collapsing code blocks"),
+                ("Minimap", "Show code minimap on right side"),
+            ],
+            "🎨 Appearance": [
+                ("Font Size", "Adjust editor font size (8-24)"),
+                ("Show Toolbar", "Display top toolbar"),
+                ("Show Status Bar", "Display bottom status bar"),
+                ("Smooth Scrolling", "Enable smooth scroll animation"),
+                ("Cursor Blink", "Animated cursor blinking"),
+                ("Highlight Current Line", "Highlight active line"),
+            ],
+            "💾 Behavior": [
+                ("Auto-save", "Automatically save work every 60s"),
+                ("Notifications", "Show notification popups"),
+                ("Sound Effects", "Enable UI sound feedback"),
+                ("Spell Check", "Check spelling in comments/strings"),
+                ("Tab Size", "Use 4 spaces for tabs"),
+                ("Trim Whitespace", "Remove trailing spaces on save"),
+                ("Format on Save", "Auto-format code when saving"),
+                ("Confirm Exit", "Ask before closing application"),
+            ],
+            "🔧 Advanced": [
+                ("Debug Mode", "Show detailed error messages"),
+                ("Telemetry", "Send anonymous usage data"),
+                ("Auto-update", "Check for updates automatically"),
+                ("Experimental Features", "Enable beta features"),
+                ("Performance Mode", "Optimize for speed"),
+                ("Memory Limit", "Set max memory usage (MB)"),
+                ("GPU Acceleration", "Use hardware acceleration"),
+                ("Multi-threading", "Enable parallel processing"),
+            ],
+            "🔒 Privacy & Security": [
+                ("Save History", "Remember command history"),
+                ("Remember Session", "Restore last session on startup"),
+                ("Encrypted Storage", "Encrypt saved files"),
+                ("Password Protection", "Require password to open"),
+                ("Clear on Exit", "Clear temporary files on close"),
+                ("Secure Mode", "Disable network features"),
+                ("Anonymous Mode", "Don't track any data"),
+            ],
+        }
         
-        for i, (setting_name, setting_desc) in enumerate(settings_data):
-            self.create_setting_item(settings_frame, setting_name, setting_desc, i)
+        # Create sections in 2-column layout
+        columns_frame = tk.Frame(settings_frame, bg=self.bg_color)
+        columns_frame.pack(fill=tk.BOTH, expand=True)
+        
+        left_column = tk.Frame(columns_frame, bg=self.bg_color)
+        left_column.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 10))
+        
+        right_column = tk.Frame(columns_frame, bg=self.bg_color)
+        right_column.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True, padx=(10, 0))
+        
+        # Distribute sections between columns
+        section_items = list(settings_sections.items())
+        left_sections = section_items[::2]  # 0, 2, 4...
+        right_sections = section_items[1::2]  # 1, 3, 5...
+        
+        # Create sections for left column
+        for section_name, settings in left_sections:
+            self.create_settings_section(left_column, section_name, settings)
+        
+        # Create sections for right column
+        for section_name, settings in right_sections:
+            self.create_settings_section(right_column, section_name, settings)
         
         # Enable mousewheel scrolling
         def on_mousewheel(event):
@@ -2527,21 +3578,139 @@ Provide your answer. If you suggest code, wrap it in ```python code blocks. [/IN
         canvas.bind_all("<MouseWheel>", on_mousewheel)
         
         # Save button with pulse animation
-        save_btn = tk.Button(container, text="Save Settings", font=("Segoe UI", 11, "bold"),
+        button_frame = tk.Frame(container, bg=self.bg_color)
+        button_frame.pack(pady=15, side=tk.BOTTOM, fill=tk.X)
+        
+        save_btn = tk.Button(button_frame, text="💾 Save Settings", font=("Segoe UI", 11, "bold"),
                             bg=self.accent_color, fg="white",
-                            border=0, cursor="hand2", pady=10, padx=30,
+                            relief=tk.FLAT, cursor="hand2", pady=12, padx=40,
                             command=self.save_settings)
-        save_btn.pack(pady=10, side=tk.BOTTOM)
+        save_btn.pack(side=tk.LEFT, padx=(0, 10))
+        
+        reset_btn = tk.Button(button_frame, text="🔄 Reset to Defaults", font=("Segoe UI", 11),
+                             bg="#cc3333", fg="white",
+                             relief=tk.FLAT, cursor="hand2", pady=12, padx=40,
+                             command=self.reset_settings)
+        reset_btn.pack(side=tk.LEFT)
         
         # Pulse animation on hover
-        def pulse_animation(count=0):
-            if count < 2:
-                save_btn.config(bg=self.button_hover)
-                self.root.after(200, lambda: save_btn.config(bg=self.accent_color))
-                self.root.after(400, lambda: pulse_animation(count + 1))
+        self.add_hover_effect(save_btn, "#0066cc", self.accent_color)
+        self.add_hover_effect(reset_btn, "#dd4444", "#cc3333")
+    
+    def create_settings_section(self, parent, section_name, settings):
+        """Create a settings section with a header and items"""
+        section_frame = tk.Frame(parent, bg=self.secondary_bg, 
+                                highlightbackground="#333333", highlightthickness=1)
+        section_frame.pack(fill=tk.X, pady=(0, 15))
         
-        save_btn.bind("<Enter>", lambda e: pulse_animation())
-        save_btn.bind("<Leave>", lambda e: save_btn.config(bg=self.accent_color))
+        # Section header
+        header = tk.Frame(section_frame, bg="#252525")
+        header.pack(fill=tk.X)
+        
+        tk.Label(header, text=section_name,
+                font=("Segoe UI", 12, "bold"),
+                bg="#252525", fg=self.text_color).pack(anchor="w", padx=20, pady=12)
+        
+        # Settings items
+        for i, (setting_name, setting_desc) in enumerate(settings):
+            self.create_setting_item_inline(section_frame, setting_name, setting_desc)
+    
+    def create_setting_item_inline(self, parent, name, desc):
+        """Create a compact inline setting item"""
+        setting_frame = tk.Frame(parent, bg=self.secondary_bg)
+        setting_frame.pack(fill=tk.X, padx=15, pady=8)
+        
+        # Get initial value from settings_state
+        initial_value = self.settings_state.get(name, True)
+        var = tk.BooleanVar(master=self.root, value=initial_value)
+        
+        def on_toggle():
+            """Handle checkbox toggle with real functionality"""
+            state = var.get()
+            self.settings_state[name] = state
+            
+            # Apply specific setting changes (same as before)
+            if name == "Auto-complete":
+                if hasattr(self, 'code_input'):
+                    if state:
+                        self.show_notification("✓ Auto-complete enabled", "success")
+                    else:
+                        self.show_notification("✓ Auto-complete disabled", "info")
+            
+            elif name == "Word Wrap":
+                if hasattr(self, 'code_input'):
+                    self.code_input.config(wrap=tk.WORD if state else tk.NONE)
+                    self.show_notification(f"✓ Word Wrap {'enabled' if state else 'disabled'}", "success" if state else "info")
+            
+            elif name == "Line Numbers":
+                if hasattr(self, 'line_numbers'):
+                    if state:
+                        self.line_numbers.pack(side=tk.LEFT, fill=tk.Y)
+                        self.update_line_numbers()
+                    else:
+                        self.line_numbers.pack_forget()
+                    self.show_notification(f"✓ Line Numbers {'shown' if state else 'hidden'}", "success" if state else "info")
+            
+            elif name == "Syntax Highlighting":
+                if hasattr(self, 'code_input'):
+                    if state:
+                        self.apply_syntax_highlighting()
+                    else:
+                        for tag in ["keyword", "string", "comment", "function", "number"]:
+                            self.code_input.tag_remove(tag, "1.0", "end")
+                    self.show_notification(f"✓ Syntax Highlighting {'enabled' if state else 'disabled'}", "success" if state else "info")
+            
+            elif name == "Auto-save":
+                self.auto_save_enabled = state
+                if state:
+                    self.start_auto_save()
+                    self.show_notification("✓ Auto-save enabled (60s)", "success")
+                else:
+                    if self.auto_save_timer:
+                        self.root.after_cancel(self.auto_save_timer)
+                    self.show_notification("✓ Auto-save disabled", "info")
+            
+            elif name == "Notifications":
+                self.show_notification(f"✓ Notifications {'enabled' if state else 'disabled'}", "success" if state else "info")
+            
+            else:
+                status = "enabled" if state else "disabled"
+                self.show_notification(f"✓ {name} {status}", "success" if state else "info")
+        
+        check = tk.Checkbutton(setting_frame,
+                              text=name,
+                              variable=var,
+                              font=("Segoe UI", 10, "bold"),
+                              bg=self.secondary_bg,
+                              fg=self.text_color,
+                              selectcolor=self.accent_color,
+                              activebackground=self.secondary_bg,
+                              activeforeground=self.text_color,
+                              command=on_toggle)
+        check.pack(anchor="w", pady=(5, 2))
+        
+        # Description
+        desc_label = tk.Label(setting_frame, text=desc,
+                             font=("Segoe UI", 8),
+                             bg=self.secondary_bg, fg="#888888")
+        desc_label.pack(anchor="w", padx=20, pady=(0, 5))
+    
+    def reset_settings(self):
+        """Reset all settings to default values"""
+        try:
+            # Reset all settings to True (default)
+            for key in self.settings_state:
+                self.settings_state[key] = True
+            
+            # Reload the settings page to update UI
+            self.show_notification("✓ Settings reset to defaults!", "success")
+            self.update_status("Settings reset to defaults")
+            
+            # Refresh the settings page
+            self.show_page("Settings")
+            
+        except Exception as e:
+            self.show_notification(f"Error resetting settings: {e}", "error")
     
     def create_setting_item(self, parent, name, desc, index):
         """Create an animated setting item with real functionality"""
@@ -2726,8 +3895,46 @@ Created for efficient Python development"""
     # Placeholder methods for functionality
     def save_file(self):
         """Save current file and track statistics"""
-        self.stats["files_saved"] += 1
-        self.update_status(f"File saved successfully ({self.stats['files_saved']} total)")
+        from tkinter import filedialog
+        
+        try:
+            # Get content
+            content = self.code_text.get("1.0", "end-1c")
+            
+            # If we have a current file, save to it
+            if hasattr(self, 'current_file') and self.current_file:
+                filepath = self.current_file
+            else:
+                # Ask for file location
+                filepath = filedialog.asksaveasfilename(
+                    defaultextension=".py",
+                    filetypes=[
+                        ("Python files", "*.py"),
+                        ("Text files", "*.txt"),
+                        ("All files", "*.*")
+                    ],
+                    initialdir=self.scripts_dir
+                )
+                
+                if not filepath:
+                    return  # User cancelled
+                
+                self.current_file = filepath
+            
+            # Save file
+            with open(filepath, 'w', encoding='utf-8') as f:
+                f.write(content)
+            
+            # Track in recent files
+            self.add_to_recent_files(filepath)
+            
+            # Update stats
+            self.stats["files_saved"] += 1
+            self.update_status(f"File saved: {os.path.basename(filepath)}")
+            self.show_notification(f"Saved: {os.path.basename(filepath)}", "success")
+            
+        except Exception as e:
+            self.show_notification(f"Error saving file: {e}", "error")
     
     def run_code(self):
         """Run the code in the editor with execution time tracking and statistics"""
@@ -2996,7 +4203,88 @@ Created for efficient Python development"""
         self.root.bind('<F2>', lambda e: self.show_theme_customizer())
         self.root.bind('<F3>', lambda e: self.show_statistics_dashboard())
         self.root.bind('<Control-Alt-s>', lambda e: self.toggle_auto_save())
+        
+        # NEW FEATURE SHORTCUTS
+        self.root.bind('<Control-d>', self.duplicate_line)  # Feature #59
+        self.root.bind('<Control-Shift-K>', self.delete_line)  # Feature #60
+        self.root.bind('<Control-Shift-U>', self.convert_to_upper)  # Feature #61
+        self.root.bind('<Control-Shift-L>', self.convert_to_lower)  # Feature #61
+        self.root.bind('<Control-Shift-T>', self.convert_to_title)  # Feature #61
+        self.root.bind('<Control-Shift-W>', self.trim_whitespace)  # Feature #63
+        self.root.bind('<Control-Shift-D>', self.insert_datetime)  # Feature #64
+        self.root.bind('<Control-Shift-P>', self.copy_file_path)  # Feature #58
+        self.root.bind('<Alt-z>', self.toggle_line_wrap)  # Feature #57
+        self.root.bind('<Control-plus>', self.zoom_in)  # Feature #33
+        self.root.bind('<Control-equal>', self.zoom_in)  # Feature #33 (alternative)
+        self.root.bind('<Control-minus>', self.zoom_out)  # Feature #33
+        self.root.bind('<Control-0>', self.reset_zoom)  # Feature #33
+        self.root.bind('<Control-Shift-P>', self.show_command_palette)  # Feature #29
 
+    
+    def setup_command_palette(self):
+        """Initialize command palette with all available commands"""
+        self.commands = {
+            "Open Dashboard": lambda: self.load_page("Dashboard"),
+            "Open Console": lambda: self.load_page("Console"),
+            "Open History": lambda: self.load_page("History"),
+            "Open Snippets": lambda: self.load_page("Snippets"),
+            "Open Tools": lambda: self.load_page("Tools"),
+            "Open Value Changer": lambda: self.load_page("ValueChanger"),
+            "Open AI Assistant": lambda: self.load_page("AI Assistant"),
+            "Open Progress": lambda: self.load_page("Progress"),
+            "Open Settings": lambda: self.load_page("Settings"),
+            "Open About": lambda: self.load_page("About"),
+            "Save File": self.save_file,
+            "Run Code": self.run_code,
+            "Format Code": self.format_code,
+            "Find": self.show_find_dialog,
+            "Show Shortcuts": self.show_shortcuts_panel,
+            "Global Search": self.show_global_search,
+            "Export Options": self.show_export_options,
+            "Templates Manager": self.show_templates_manager,
+            "Theme Customizer": self.show_theme_customizer,
+            "Statistics Dashboard": self.show_statistics_dashboard,
+            "File Explorer": self.show_file_explorer,
+            "Check for Updates": self.check_for_updates,
+            "Duplicate Line": self.duplicate_line,
+            "Delete Line": self.delete_line,
+            "Convert to Uppercase": self.convert_to_upper,
+            "Convert to Lowercase": self.convert_to_lower,
+            "Convert to Title Case": self.convert_to_title,
+            "Sort Lines Ascending": self.sort_lines_ascending,
+            "Sort Lines Descending": self.sort_lines_descending,
+            "Trim Whitespace": self.trim_whitespace,
+            "Insert Date/Time": self.insert_datetime,
+            "Toggle Line Wrap": self.toggle_line_wrap,
+            "Copy File Path": self.copy_file_path,
+            "Zoom In": self.zoom_in,
+            "Zoom Out": self.zoom_out,
+            "Reset Zoom": self.reset_zoom,
+            "Undo": self.undo,
+            "Redo": self.redo,
+            "Toggle Auto-Save": self.toggle_auto_save,
+        }
+        
+        theme = {
+            'bg_color': self.bg_color,
+            'secondary_bg': self.secondary_bg,
+            'text_color': self.text_color,
+            'accent_color': self.accent_color
+        }
+        
+        self.command_palette = CommandPalette(self.root, self.commands, theme, self.execute_command)
+    
+    def show_command_palette(self, event=None):
+        """Show command palette"""
+        self.command_palette.show()
+        return "break"
+    
+    def execute_command(self, command_func):
+        """Execute a command from the palette"""
+        try:
+            command_func()
+        except Exception as e:
+            self.show_notification(f"Command error: {e}", "error")
     
     # ==================== NEW FEATURES ====================
     
@@ -3035,117 +4323,8 @@ Created for efficient Python development"""
         self.is_resizing = False
     
     def show_notification(self, message, type="info"):
-        """Show professional toast notification"""
-        # Create notification window
-        notif = tk.Toplevel(self.root)
-        notif.overrideredirect(True)
-        notif.attributes('-topmost', True)
-        notif.attributes('-alpha', 0.95)  # Slight transparency
-        
-        # Position at top-right
-        x = self.root.winfo_x() + self.root.winfo_width() - 370
-        y = self.root.winfo_y() + 80
-        notif.geometry(f"350x100+{x}+{y}")
-        
-        # Color based on type
-        colors = {
-            "success": "#2e7d32",
-            "error": "#d32f2f",
-            "warning": "#f57c00",
-            "info": self.accent_color
-        }
-        color = colors.get(type, self.accent_color)
-        
-        # Modern card-style background
-        bg_frame = tk.Frame(notif, bg=self.bg_color)
-        bg_frame.pack(fill=tk.BOTH, expand=True)
-        
-        # Left accent bar
-        accent_bar = tk.Frame(bg_frame, bg=color, width=6)
-        accent_bar.pack(side=tk.LEFT, fill=tk.Y)
-        
-        # Content frame
-        content = tk.Frame(bg_frame, bg=self.secondary_bg)
-        content.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        
-        # Header with icon and close button
-        header = tk.Frame(content, bg=self.secondary_bg)
-        header.pack(fill=tk.X, padx=15, pady=(12, 5))
-        
-        # Icon
-        icons = {"success": "✓", "error": "✗", "warning": "⚠", "info": "ℹ"}
-        icon_label = tk.Label(header, text=icons.get(type, "ℹ"),
-                             font=("Segoe UI", 20, "bold"),
-                             bg=self.secondary_bg, fg=color)
-        icon_label.pack(side=tk.LEFT)
-        
-        # Title based on type
-        titles = {"success": "Success", "error": "Error", "warning": "Warning", "info": "Info"}
-        title_label = tk.Label(header, text=titles.get(type, "Notification"),
-                              font=("Segoe UI", 11, "bold"),
-                              bg=self.secondary_bg, fg=self.text_color)
-        title_label.pack(side=tk.LEFT, padx=10)
-        
-        # Close button
-        close_btn = tk.Label(header, text="✕", font=("Segoe UI", 14),
-                            bg=self.secondary_bg, fg="#888888",
-                            cursor="hand2")
-        close_btn.pack(side=tk.RIGHT)
-        close_btn.bind("<Button-1>", lambda e: notif.destroy())
-        close_btn.bind("<Enter>", lambda e: close_btn.config(fg=self.text_color))
-        close_btn.bind("<Leave>", lambda e: close_btn.config(fg="#888888"))
-        
-        # Message
-        msg_label = tk.Label(content, text=message, font=("Segoe UI", 10),
-                            bg=self.secondary_bg, fg="#a0a0a0",
-                            wraplength=300, justify="left", anchor="w")
-        msg_label.pack(fill=tk.X, padx=15, pady=(0, 12))
-        
-        # Subtle shadow effect
-        notif.config(highlightbackground="#000000", highlightthickness=1)
-        
-        # Fade in animation
-        def fade_in(alpha=0.0):
-            if alpha < 0.95:
-                try:
-                    notif.attributes('-alpha', alpha)
-                    self.root.after(20, lambda: fade_in(alpha + 0.05))
-                except:
-                    pass
-        
-        # Slide in animation
-        def slide_in(pos=0):
-            if pos < 20:
-                try:
-                    notif.geometry(f"350x100+{x}+{y - pos}")
-                    self.root.after(10, lambda: slide_in(pos + 2))
-                except:
-                    pass
-        
-        # Auto close after 4 seconds
-        def auto_close():
-            try:
-                if notif.winfo_exists():
-                    # Fade out
-                    def fade_out(alpha=0.95):
-                        if alpha > 0:
-                            try:
-                                notif.attributes('-alpha', alpha)
-                                self.root.after(20, lambda: fade_out(alpha - 0.05))
-                            except:
-                                pass
-                        else:
-                            try:
-                                notif.destroy()
-                            except:
-                                pass
-                    fade_out()
-            except:
-                pass
-        
-        fade_in()
-        slide_in()
-        self.root.after(4000, auto_close)
+        """Show professional toast notification using new notification system"""
+        ToastNotification(self.root, message, type, duration=3000)
     
     def show_shortcuts_panel(self):
         """Show keyboard shortcuts panel"""
@@ -3790,3 +4969,565 @@ Created for efficient Python development"""
         finally:
             # Use the proper on_closing handler
             self.on_closing()
+    
+    # ========== NEW FEATURES ==========
+    
+    # Feature #65: Character/Word/Line Count
+    def update_char_count(self, event=None):
+        """Update character, word, and line count in status bar"""
+        try:
+            if hasattr(self, 'code_text') and self.code_text.winfo_exists():
+                content = self.code_text.get("1.0", "end-1c")
+                char_count = len(content)
+                word_count = len(content.split())
+                line_count = int(self.code_text.index('end-1c').split('.')[0])
+                
+                self.char_count_label.config(text=f"Chars: {char_count} | Words: {word_count} | Lines: {line_count}")
+        except:
+            pass
+    
+    # Feature #33: Zoom Controls
+    def zoom_in(self, event=None):
+        """Increase font size"""
+        self.zoom_level += 0.1
+        self.apply_zoom()
+        return "break"
+    
+    def zoom_out(self, event=None):
+        """Decrease font size"""
+        self.zoom_level = max(0.5, self.zoom_level - 0.1)
+        self.apply_zoom()
+        return "break"
+    
+    def reset_zoom(self, event=None):
+        """Reset zoom to 100%"""
+        self.zoom_level = 1.0
+        self.apply_zoom()
+    
+    def apply_zoom(self):
+        """Apply zoom level to editor"""
+        try:
+            base_size = 11
+            new_size = int(base_size * self.zoom_level)
+            
+            if hasattr(self, 'code_text'):
+                self.code_text.config(font=("Consolas", new_size))
+            if hasattr(self, 'line_numbers'):
+                self.line_numbers.config(font=("Consolas", new_size))
+            
+            self.zoom_label.config(text=f"{int(self.zoom_level * 100)}%")
+        except:
+            pass
+    
+    # Feature #69: Update Checker
+    def silent_update_check(self):
+        """Silently check for updates on startup"""
+        try:
+            has_update = self.update_checker.check_for_updates()
+            if has_update:
+                self.root.after(0, lambda: self.update_btn.config(
+                    text="⚡ Update Available!",
+                    fg="#ffaa00"
+                ))
+        except:
+            pass
+    
+    def check_for_updates(self):
+        """Check for updates and show dialog"""
+        self.update_btn.config(text="🔄 Checking...")
+        
+        def check():
+            try:
+                has_update = self.update_checker.check_for_updates()
+                info = self.update_checker.get_update_info()
+                
+                self.root.after(0, lambda: self.show_update_dialog(has_update, info))
+            except Exception as e:
+                self.root.after(0, lambda: self.show_notification(f"Update check failed: {e}", "error"))
+                self.root.after(0, lambda: self.update_btn.config(text="🔄 Check Updates"))
+        
+        threading.Thread(target=check, daemon=True).start()
+    
+    def show_update_dialog(self, has_update, info):
+        """Show update dialog"""
+        self.update_btn.config(text="🔄 Check Updates")
+        
+        dialog = tk.Toplevel(self.root)
+        dialog.title("Update Check")
+        dialog.geometry("500x400")
+        dialog.configure(bg=self.bg_color)
+        dialog.transient(self.root)
+        dialog.grab_set()
+        
+        # Center dialog
+        dialog.update_idletasks()
+        x = (dialog.winfo_screenwidth() // 2) - (500 // 2)
+        y = (dialog.winfo_screenheight() // 2) - (400 // 2)
+        dialog.geometry(f"+{x}+{y}")
+        
+        if has_update:
+            tk.Label(dialog, text="⚡ Update Available!",
+                    font=("Segoe UI", 16, "bold"),
+                    bg=self.bg_color, fg="#00ff00").pack(pady=20)
+            
+            tk.Label(dialog, text=f"Current Version: {info['current']}",
+                    font=("Segoe UI", 11),
+                    bg=self.bg_color, fg=self.text_color).pack(pady=5)
+            
+            tk.Label(dialog, text=f"Latest Version: {info['latest']}",
+                    font=("Segoe UI", 11, "bold"),
+                    bg=self.bg_color, fg="#00ff00").pack(pady=5)
+            
+            # Release notes
+            notes_frame = tk.Frame(dialog, bg=self.secondary_bg)
+            notes_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
+            
+            tk.Label(notes_frame, text="Release Notes:",
+                    font=("Segoe UI", 10, "bold"),
+                    bg=self.secondary_bg, fg=self.text_color).pack(anchor="w", padx=10, pady=5)
+            
+            notes_text = tk.Text(notes_frame, font=("Segoe UI", 9),
+                                bg=self.bg_color, fg=self.text_color,
+                                wrap=tk.WORD, height=10)
+            notes_text.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
+            notes_text.insert("1.0", info['notes'])
+            notes_text.config(state=tk.DISABLED)
+            
+            # Buttons
+            btn_frame = tk.Frame(dialog, bg=self.bg_color)
+            btn_frame.pack(pady=10)
+            
+            download_btn = tk.Button(btn_frame, text="Download Update",
+                                    font=("Segoe UI", 10, "bold"),
+                                    bg="#00aa00", fg="white",
+                                    relief=tk.FLAT, bd=0,
+                                    padx=20, pady=10,
+                                    cursor="hand2",
+                                    command=lambda: self.open_url(info['url']))
+            download_btn.pack(side=tk.LEFT, padx=5)
+            
+            close_btn = tk.Button(btn_frame, text="Later",
+                                 font=("Segoe UI", 10),
+                                 bg=self.secondary_bg, fg=self.text_color,
+                                 relief=tk.FLAT, bd=0,
+                                 padx=20, pady=10,
+                                 cursor="hand2",
+                                 command=dialog.destroy)
+            close_btn.pack(side=tk.LEFT, padx=5)
+        else:
+            tk.Label(dialog, text="✓ You're up to date!",
+                    font=("Segoe UI", 16, "bold"),
+                    bg=self.bg_color, fg="#00ff00").pack(pady=40)
+            
+            tk.Label(dialog, text=f"Current Version: {info['current']}",
+                    font=("Segoe UI", 11),
+                    bg=self.bg_color, fg=self.text_color).pack(pady=10)
+            
+            close_btn = tk.Button(dialog, text="Close",
+                                 font=("Segoe UI", 10, "bold"),
+                                 bg=self.accent_color, fg="white",
+                                 relief=tk.FLAT, bd=0,
+                                 padx=30, pady=10,
+                                 cursor="hand2",
+                                 command=dialog.destroy)
+            close_btn.pack(pady=20)
+    
+    def open_url(self, url):
+        """Open URL in browser"""
+        import webbrowser
+        webbrowser.open(url)
+    
+    # Feature #59: Duplicate Line (Ctrl+D)
+    def duplicate_line(self, event=None):
+        """Duplicate current line or selection"""
+        try:
+            if self.code_text.tag_ranges("sel"):
+                # Duplicate selection
+                content = self.code_text.get("sel.first", "sel.last")
+                self.code_text.insert("sel.last", content)
+            else:
+                # Duplicate current line
+                line_num = self.code_text.index("insert").split('.')[0]
+                line_content = self.code_text.get(f"{line_num}.0", f"{line_num}.end")
+                self.code_text.insert(f"{line_num}.end", "\n" + line_content)
+        except:
+            pass
+        return "break"
+    
+    # Feature #60: Delete Line (Ctrl+Shift+K)
+    def delete_line(self, event=None):
+        """Delete current line"""
+        try:
+            line_num = self.code_text.index("insert").split('.')[0]
+            self.code_text.delete(f"{line_num}.0", f"{int(line_num)+1}.0")
+        except:
+            pass
+        return "break"
+    
+    # Feature #61: Case Converter
+    def convert_to_upper(self, event=None):
+        """Convert selection to UPPERCASE"""
+        try:
+            if self.code_text.tag_ranges("sel"):
+                content = self.code_text.get("sel.first", "sel.last")
+                self.code_text.delete("sel.first", "sel.last")
+                self.code_text.insert("insert", content.upper())
+        except:
+            pass
+        return "break"
+    
+    def convert_to_lower(self, event=None):
+        """Convert selection to lowercase"""
+        try:
+            if self.code_text.tag_ranges("sel"):
+                content = self.code_text.get("sel.first", "sel.last")
+                self.code_text.delete("sel.first", "sel.last")
+                self.code_text.insert("insert", content.lower())
+        except:
+            pass
+        return "break"
+    
+    def convert_to_title(self, event=None):
+        """Convert selection to Title Case"""
+        try:
+            if self.code_text.tag_ranges("sel"):
+                content = self.code_text.get("sel.first", "sel.last")
+                self.code_text.delete("sel.first", "sel.last")
+                self.code_text.insert("insert", content.title())
+        except:
+            pass
+        return "break"
+    
+    # Feature #62: Sort Lines
+    def sort_lines_ascending(self, event=None):
+        """Sort selected lines alphabetically (A-Z)"""
+        try:
+            if self.code_text.tag_ranges("sel"):
+                content = self.code_text.get("sel.first", "sel.last")
+                lines = content.split('\n')
+                sorted_lines = '\n'.join(sorted(lines))
+                self.code_text.delete("sel.first", "sel.last")
+                self.code_text.insert("insert", sorted_lines)
+        except:
+            pass
+        return "break"
+    
+    def sort_lines_descending(self, event=None):
+        """Sort selected lines alphabetically (Z-A)"""
+        try:
+            if self.code_text.tag_ranges("sel"):
+                content = self.code_text.get("sel.first", "sel.last")
+                lines = content.split('\n')
+                sorted_lines = '\n'.join(sorted(lines, reverse=True))
+                self.code_text.delete("sel.first", "sel.last")
+                self.code_text.insert("insert", sorted_lines)
+        except:
+            pass
+        return "break"
+    
+    # Feature #63: Trim Whitespace
+    def trim_whitespace(self, event=None):
+        """Remove trailing whitespace from all lines"""
+        try:
+            content = self.code_text.get("1.0", "end-1c")
+            lines = content.split('\n')
+            trimmed_lines = [line.rstrip() for line in lines]
+            self.code_text.delete("1.0", "end")
+            self.code_text.insert("1.0", '\n'.join(trimmed_lines))
+            self.show_notification("Trailing whitespace removed", "success")
+        except:
+            pass
+        return "break"
+    
+    # Feature #64: Insert Date/Time
+    def insert_datetime(self, event=None):
+        """Insert current date and time"""
+        try:
+            from datetime import datetime
+            timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            self.code_text.insert("insert", timestamp)
+        except:
+            pass
+        return "break"
+    
+    # Feature #57: Line Wrap Toggle
+    def toggle_line_wrap(self, event=None):
+        """Toggle word wrap in editor"""
+        try:
+            current_wrap = self.code_text.cget("wrap")
+            new_wrap = "none" if current_wrap == "word" else "word"
+            self.code_text.config(wrap=new_wrap)
+            status = "enabled" if new_wrap == "word" else "disabled"
+            self.show_notification(f"Line wrap {status}", "info")
+        except:
+            pass
+        return "break"
+    
+    # Feature #58: Copy Full Path
+    def copy_file_path(self, event=None):
+        """Copy current file path to clipboard"""
+        try:
+            if hasattr(self, 'current_file') and self.current_file:
+                self.root.clipboard_clear()
+                self.root.clipboard_append(self.current_file)
+                self.show_notification(f"Copied: {self.current_file}", "success")
+            else:
+                self.show_notification("No file open", "warning")
+        except:
+            pass
+        return "break"
+    
+    # Feature #30: Recent Files
+    def show_recent_files(self):
+        """Show recent files menu"""
+        if not self.recent_files:
+            self.show_notification("No recent files", "info")
+            return
+        
+        # Create popup menu
+        menu_dialog = tk.Toplevel(self.root)
+        menu_dialog.title("Recent Files")
+        menu_dialog.geometry("600x400")
+        menu_dialog.configure(bg=self.bg_color)
+        menu_dialog.transient(self.root)
+        menu_dialog.grab_set()
+        
+        # Title
+        title_frame = tk.Frame(menu_dialog, bg=self.secondary_bg, height=50)
+        title_frame.pack(fill=tk.X)
+        title_frame.pack_propagate(False)
+        
+        tk.Label(title_frame, text="Recent Files", font=("Segoe UI", 14, "bold"),
+                bg=self.secondary_bg, fg=self.text_color).pack(side=tk.LEFT, padx=20, pady=10)
+        
+        tk.Button(title_frame, text="Clear All", font=("Segoe UI", 9),
+                 bg=self.accent_color, fg="white", relief=tk.FLAT, padx=15, pady=5,
+                 cursor="hand2", command=lambda: self.clear_recent_files(menu_dialog)).pack(side=tk.RIGHT, padx=10)
+        
+        # File list
+        list_frame = tk.Frame(menu_dialog, bg=self.bg_color)
+        list_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        
+        # Scrollbar
+        scrollbar = tk.Scrollbar(list_frame)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        
+        # Listbox
+        file_listbox = tk.Listbox(list_frame, font=("Consolas", 10),
+                                  bg=self.secondary_bg, fg=self.text_color,
+                                  selectbackground=self.accent_color,
+                                  selectforeground="white",
+                                  yscrollcommand=scrollbar.set,
+                                  relief=tk.FLAT, bd=0)
+        file_listbox.pack(fill=tk.BOTH, expand=True)
+        scrollbar.config(command=file_listbox.yview)
+        
+        # Populate list
+        for i, filepath in enumerate(self.recent_files):
+            display_name = os.path.basename(filepath)
+            file_listbox.insert(tk.END, f"{i+1}. {display_name}")
+        
+        # Double-click to open
+        def open_selected(event):
+            selection = file_listbox.curselection()
+            if selection:
+                index = selection[0]
+                filepath = self.recent_files[index]
+                menu_dialog.destroy()
+                self.open_file_from_path(filepath)
+        
+        file_listbox.bind("<Double-Button-1>", open_selected)
+        
+        # Button frame
+        button_frame = tk.Frame(menu_dialog, bg=self.bg_color)
+        button_frame.pack(fill=tk.X, padx=10, pady=10)
+        
+        tk.Button(button_frame, text="Open", font=("Segoe UI", 10, "bold"),
+                 bg=self.accent_color, fg="white", relief=tk.FLAT, padx=20, pady=8,
+                 cursor="hand2", 
+                 command=lambda: open_selected(None) if file_listbox.curselection() else None).pack(side=tk.LEFT, padx=5)
+        
+        tk.Button(button_frame, text="Close", font=("Segoe UI", 10),
+                 bg=self.secondary_bg, fg=self.text_color, relief=tk.FLAT, padx=20, pady=8,
+                 cursor="hand2", command=menu_dialog.destroy).pack(side=tk.RIGHT, padx=5)
+        
+        # Center dialog
+        menu_dialog.update_idletasks()
+        x = self.root.winfo_x() + (self.root.winfo_width() // 2) - (menu_dialog.winfo_width() // 2)
+        y = self.root.winfo_y() + (self.root.winfo_height() // 2) - (menu_dialog.winfo_height() // 2)
+        menu_dialog.geometry(f"+{x}+{y}")
+    
+    def add_to_recent_files(self, filepath):
+        """Add a file to recent files list"""
+        if not filepath or not os.path.exists(filepath):
+            return
+        
+        # Remove if already in list
+        if filepath in self.recent_files:
+            self.recent_files.remove(filepath)
+        
+        # Add to front
+        self.recent_files.insert(0, filepath)
+        
+        # Trim to max length
+        if len(self.recent_files) > self.max_recent_files:
+            self.recent_files = self.recent_files[:self.max_recent_files]
+        
+        # Save to disk
+        self.save_recent_files()
+    
+    def load_recent_files(self):
+        """Load recent files from disk"""
+        try:
+            if os.path.exists(self.recent_files_file):
+                import json
+                with open(self.recent_files_file, 'r') as f:
+                    self.recent_files = json.load(f)
+                # Filter out files that no longer exist
+                self.recent_files = [f for f in self.recent_files if os.path.exists(f)]
+        except Exception as e:
+            print(f"Error loading recent files: {e}")
+            self.recent_files = []
+    
+    def save_recent_files(self):
+        """Save recent files to disk"""
+        try:
+            import json
+            with open(self.recent_files_file, 'w') as f:
+                json.dump(self.recent_files, f)
+        except Exception as e:
+            print(f"Error saving recent files: {e}")
+    
+    def clear_recent_files(self, dialog=None):
+        """Clear all recent files"""
+        self.recent_files = []
+        self.save_recent_files()
+        if dialog:
+            dialog.destroy()
+        self.show_notification("Recent files cleared", "success")
+    
+    def open_file_from_path(self, filepath):
+        """Open a file from a given path"""
+        try:
+            if os.path.exists(filepath):
+                with open(filepath, 'r', encoding='utf-8') as f:
+                    content = f.read()
+                self.code_text.delete("1.0", tk.END)
+                self.code_text.insert("1.0", content)
+                self.current_file = filepath
+                self.add_to_recent_files(filepath)
+                self.show_notification(f"Opened: {os.path.basename(filepath)}", "success")
+            else:
+                self.show_notification("File not found", "error")
+        except Exception as e:
+            self.show_notification(f"Error opening file: {e}", "error")
+    
+    # Feature #37: Color Picker
+    def show_color_picker(self):
+        """Show color picker tool"""
+        from tkinter import colorchooser
+        
+        color = colorchooser.askcolor(parent=self.root, title="Choose Color")
+        if color[1]:  # color[1] is the hex value
+            hex_color = color[1]
+            rgb_color = color[0]
+            
+            # Copy to clipboard
+            self.root.clipboard_clear()
+            self.root.clipboard_append(hex_color)
+            
+            # Show notification with color preview
+            self.show_notification(f"Color: {hex_color} copied to clipboard", "success")
+            
+            # Insert color at cursor position if editor is focused
+            try:
+                self.code_text.insert(tk.INSERT, hex_color)
+            except:
+                pass
+    
+    # Feature #40: Diff Viewer
+    def show_diff_viewer(self):
+        """Show diff viewer for comparing texts"""
+        # Create dialog for input
+        dialog = tk.Toplevel(self.root)
+        dialog.title("Diff Viewer - Input")
+        dialog.geometry("800x600")
+        dialog.configure(bg=self.bg_color)
+        dialog.transient(self.root)
+        
+        # Title
+        title_frame = tk.Frame(dialog, bg=self.secondary_bg, height=50)
+        title_frame.pack(fill=tk.X)
+        title_frame.pack_propagate(False)
+        
+        tk.Label(title_frame, text="Compare Two Texts", font=("Segoe UI", 14, "bold"),
+                bg=self.secondary_bg, fg=self.text_color).pack(pady=10)
+        
+        # Instructions
+        tk.Label(dialog, text="Enter or paste two texts to compare:",
+                font=("Segoe UI", 10), bg=self.bg_color, fg=self.text_color).pack(pady=10)
+        
+        # Text 1
+        text1_frame = tk.Frame(dialog, bg=self.bg_color)
+        text1_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
+        
+        tk.Label(text1_frame, text="Original Text:", font=("Segoe UI", 10, "bold"),
+                bg=self.bg_color, fg=self.text_color).pack(anchor=tk.W)
+        
+        text1_widget = tk.Text(text1_frame, font=("Consolas", 10), height=10,
+                              bg=self.secondary_bg, fg=self.text_color, wrap=tk.WORD)
+        text1_widget.pack(fill=tk.BOTH, expand=True)
+        
+        # Text 2
+        text2_frame = tk.Frame(dialog, bg=self.bg_color)
+        text2_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
+        
+        tk.Label(text2_frame, text="Modified Text:", font=("Segoe UI", 10, "bold"),
+                bg=self.bg_color, fg=self.text_color).pack(anchor=tk.W)
+        
+        text2_widget = tk.Text(text2_frame, font=("Consolas", 10), height=10,
+                              bg=self.secondary_bg, fg=self.text_color, wrap=tk.WORD)
+        text2_widget.pack(fill=tk.BOTH, expand=True)
+        
+        # Buttons
+        button_frame = tk.Frame(dialog, bg=self.bg_color)
+        button_frame.pack(fill=tk.X, padx=10, pady=10)
+        
+        def compare():
+            text1 = text1_widget.get("1.0", "end-1c")
+            text2 = text2_widget.get("1.0", "end-1c")
+            
+            if not text1 or not text2:
+                self.show_notification("Please enter both texts", "warning")
+                return
+            
+            dialog.destroy()
+            
+            # Show diff viewer
+            theme = {
+                'bg_color': self.bg_color,
+                'secondary_bg': self.secondary_bg,
+                'text_color': self.text_color,
+                'accent_color': self.accent_color
+            }
+            DiffViewer.show(self.root, text1, text2, theme=theme)
+        
+        tk.Button(button_frame, text="Compare", font=("Segoe UI", 10, "bold"),
+                 bg=self.accent_color, fg="white", relief=tk.FLAT, padx=30, pady=10,
+                 cursor="hand2", command=compare).pack(side=tk.LEFT, padx=5)
+        
+        tk.Button(button_frame, text="Use Current Editor Content as Text 1",
+                 font=("Segoe UI", 9), bg=self.secondary_bg, fg=self.text_color,
+                 relief=tk.FLAT, padx=15, pady=8, cursor="hand2",
+                 command=lambda: text1_widget.insert("1.0", self.code_text.get("1.0", "end-1c"))).pack(side=tk.LEFT, padx=5)
+        
+        tk.Button(button_frame, text="Cancel", font=("Segoe UI", 10),
+                 bg=self.secondary_bg, fg=self.text_color, relief=tk.FLAT, padx=20, pady=10,
+                 cursor="hand2", command=dialog.destroy).pack(side=tk.RIGHT, padx=5)
+        
+        # Center dialog
+        dialog.update_idletasks()
+        x = self.root.winfo_x() + (self.root.winfo_width() // 2) - (dialog.winfo_width() // 2)
+        y = self.root.winfo_y() + (self.root.winfo_height() // 2) - (dialog.winfo_height() // 2)
+        dialog.geometry(f"+{x}+{y}")
+

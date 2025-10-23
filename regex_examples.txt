@@ -1,0 +1,66 @@
+REGEX TESTER EXAMPLES
+=====================
+
+Example 1: Find Email Addresses
+--------------------------------
+Pattern: [a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}
+
+Test Text:
+Contact us at support@example.com or sales@company.co.uk
+You can also reach admin@test.org for help.
+
+Expected: 3 matches (support@example.com, sales@company.co.uk, admin@test.org)
+
+
+Example 2: Find Phone Numbers (US format)
+------------------------------------------
+Pattern: \d{3}-\d{3}-\d{4}
+
+Test Text:
+Call me at 555-123-4567 or 555-987-6543
+My office number is 555-111-2222
+
+Expected: 3 matches (555-123-4567, 555-987-6543, 555-111-2222)
+
+
+Example 3: Find Capitalized Words
+----------------------------------
+Pattern: \b[A-Z][a-z]+\b
+
+Test Text:
+The Quick Brown Fox jumps over the Lazy Dog.
+Alice and Bob went to Paris and London.
+
+Expected: 8 matches (The, Quick, Brown, Fox, Lazy, Dog, Alice, Bob, Paris, London)
+
+
+Example 4: Find URLs
+---------------------
+Pattern: https?://[^\s]+
+
+Test Text:
+Visit https://example.com for more info.
+Check out http://test.org and https://github.com/user/repo
+
+Expected: 3 matches
+
+
+Example 5: Find Numbers
+------------------------
+Pattern: \d+
+
+Test Text:
+I have 5 apples, 10 oranges, and 123 bananas.
+The price is 42 dollars.
+
+Expected: 4 matches (5, 10, 123, 42)
+
+
+HOW TO USE:
+-----------
+1. Go to Tools page in the app
+2. Click on the "Regex" tab
+3. Copy a pattern from above into the "Pattern:" field
+4. Copy the corresponding test text into the text area below
+5. Click "Test Regex" button
+6. You should see the matches displayed in the results area
