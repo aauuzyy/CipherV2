@@ -369,7 +369,7 @@ class ModernUI:
         title.bind("<Button-1>", self.start_drag)
         title.bind("<B1-Motion>", self.do_drag)
         
-        version = tk.Label(title_frame, text="v4.0",
+        version = tk.Label(title_frame, text="v4.1",
                           font=("Segoe UI", 8),
                           bg=self.secondary_bg, fg="#a0a0a0")
         version.pack(side=tk.LEFT, pady=15)
@@ -4027,7 +4027,7 @@ Provide your answer. If you suggest code, wrap it in ```python code blocks. [/IN
         title.pack(pady=(30, 10))
         
         # Version with color animation
-        version_label = tk.Label(container, text="Version 4.5",
+        version_label = tk.Label(container, text="Version 4.1",
                                 font=("Segoe UI", 12),
                                 bg=self.bg_color, fg=self.accent_color)
         version_label.pack(pady=5)

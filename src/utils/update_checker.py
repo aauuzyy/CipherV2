@@ -7,7 +7,7 @@ import re
 from packaging import version
 
 class UpdateChecker:
-    def __init__(self, repo_owner="aauuzyy", repo_name="CipherV2", current_version="4.0.0"):
+    def __init__(self, repo_owner="aauuzyy", repo_name="CipherV2", current_version="4.1.0"):
         self.repo_owner = repo_owner
         self.repo_name = repo_name
         self.current_version = current_version
