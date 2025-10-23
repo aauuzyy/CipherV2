@@ -652,13 +652,20 @@ class ModernUI:
         container = tk.Frame(self.page_container, bg=self.bg_color)
         container.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
         
-        title = tk.Label(container, text="Python Console",
+        # Initialize console mode if not exists
+        if not hasattr(self, 'console_mode'):
+            self.console_mode = "Python"  # "Python" or "PowerShell"
+        
+        # Dynamic title based on mode
+        title_text = f"{self.console_mode} Console"
+        title = tk.Label(container, text=title_text,
                         font=("Segoe UI", 16, "bold"),
                         bg=self.bg_color, fg=self.text_color)
         title.pack(anchor="w", pady=(0, 10))
         
+        desc_text = "Write and execute Python code with syntax highlighting" if self.console_mode == "Python" else "Execute PowerShell commands with syntax highlighting"
         desc = tk.Label(container, 
-                       text="Write and execute Python code with syntax highlighting",
+                       text=desc_text,
                        font=("Segoe UI", 10),
                        bg=self.bg_color, fg="#a0a0a0")
         desc.pack(anchor="w", pady=(0, 20))
@@ -717,13 +724,21 @@ class ModernUI:
         scrollbar.config(command=sync_scroll)
         self.code_input.config(yscrollcommand=lambda *args: self.on_code_scroll(*args, scrollbar))
         
-        # Configure syntax highlighting tags
+        # Configure syntax highlighting tags for Python
         self.code_input.tag_configure("keyword", foreground="#569cd6")
         self.code_input.tag_configure("string", foreground="#ce9178")
         self.code_input.tag_configure("comment", foreground="#6a9955")
         self.code_input.tag_configure("function", foreground="#dcdcaa")
         self.code_input.tag_configure("number", foreground="#b5cea8")
         self.code_input.tag_configure("operator", foreground="#d4d4d4")
+        
+        # Configure syntax highlighting tags for PowerShell (matching native PowerShell colors)
+        self.code_input.tag_configure("ps_keyword", foreground="#dcdcaa")      # Commands like cd, python, Get-Process (YELLOW)
+        self.code_input.tag_configure("ps_parameter", foreground="#a0a0a0")    # -Path, -Name, --version etc. (gray)
+        self.code_input.tag_configure("ps_string", foreground="#ce9178")       # "strings" (orange)
+        self.code_input.tag_configure("ps_comment", foreground="#6a9955")      # # comments (green)
+        self.code_input.tag_configure("ps_variable", foreground="#9cdcfe")     # $variables (light cyan)
+        self.code_input.tag_configure("ps_operator", foreground="#a0a0a0")     # |, >, etc. (gray)
         
         # Restore saved content with typing animation
         if self.console_content and self.console_content.strip():
@@ -735,13 +750,19 @@ class ModernUI:
                 self.code_input.insert('1.0', self.console_content)
                 self._console_initialized = True
         else:
-            self.code_input.insert('1.0', '# Write your Python code here\nprint("Hello, CipherV4!")')
+            if self.console_mode == "Python":
+                self.code_input.insert('1.0', '# Write your Python code here\nprint("Hello, CipherV4!")')
+            else:
+                self.code_input.insert('1.0', '# PowerShell commands\nGet-Location\nWrite-Host "Hello from PowerShell!"')
             self._console_initialized = True
         
         # Update line numbers and syntax highlighting
         def update_editor(event=None):
             self.update_line_numbers()
-            self.apply_syntax_highlighting()
+            if self.console_mode == "Python":
+                self.apply_syntax_highlighting()
+            else:
+                self.apply_powershell_syntax_highlighting()
             self.console_content = self.code_input.get('1.0', tk.END)
         
         self.code_input.bind('<KeyRelease>', update_editor)
@@ -749,21 +770,33 @@ class ModernUI:
         
         # Initial update
         self.update_line_numbers()
-        self.apply_syntax_highlighting()
+        if self.console_mode == "Python":
+            self.apply_syntax_highlighting()
+        else:
+            self.apply_powershell_syntax_highlighting()
         
         # Button toolbar with animations
         btn_frame = tk.Frame(container, bg=self.bg_color)
         btn_frame.pack(fill=tk.X, pady=10)
         
-        buttons = [
-            ("▶ Run", self.accent_color, self.button_hover, self.run_code),
-            ("💾 Save", "#2e7d32", "#43a047", self.save_file),
-            ("📂 Load", "#1565c0", "#1976d2", self.show_find_dialog),
-            ("✨ Beautify", "#f57c00", "#fb8c00", self.format_code),
-            ("Insert .JSON", "#7b1fa2", "#9c27b0", self.insert_json_template),
-            ("Lint JSON", "#6a1b9a", "#8e24aa", self.lint_json),
-            ("Clear", self.secondary_bg, "#444444", self.clear_editor)
-        ]
+        # Dynamic buttons based on mode
+        if self.console_mode == "Python":
+            buttons = [
+                ("▶ Run", self.accent_color, self.button_hover, self.run_code),
+                ("💾 Save", "#2e7d32", "#43a047", self.save_file),
+                ("📂 Load", "#1565c0", "#1976d2", self.show_find_dialog),
+                ("✨ Beautify", "#f57c00", "#fb8c00", self.format_code),
+                ("Insert .JSON", "#7b1fa2", "#9c27b0", self.insert_json_template),
+                ("Lint JSON", "#6a1b9a", "#8e24aa", self.lint_json),
+                ("Clear", self.secondary_bg, "#444444", self.clear_editor),
+                ("PowerShell", "#0078d4", "#1084d8", self.toggle_console_mode)
+            ]
+        else:  # PowerShell mode
+            buttons = [
+                ("▶ Run", self.accent_color, self.button_hover, self.run_powershell),
+                ("Clear", self.secondary_bg, "#444444", self.clear_editor),
+                ("Python", "#306998", "#4b8bbe", self.toggle_console_mode)
+            ]
         
         for text, color, hover_color, command in buttons:
             btn = tk.Button(btn_frame, text=text, font=("Segoe UI", 9, "bold"),
@@ -933,6 +966,64 @@ class ModernUI:
                 start = f"1.0+{match.start(1)}c"
                 end = f"1.0+{match.end(1)}c"
                 self.code_input.tag_add("function", start, end)
+        except:
+            pass
+    
+    def apply_powershell_syntax_highlighting(self):
+        """Apply PowerShell syntax highlighting"""
+        if not hasattr(self, 'code_input'):
+            return
+        
+        try:
+            # Remove all existing tags
+            for tag in ["ps_keyword", "ps_parameter", "ps_string", "ps_comment", "ps_variable", "ps_operator"]:
+                self.code_input.tag_remove(tag, "1.0", "end")
+            
+            code = self.code_input.get("1.0", "end-1c")
+            
+            import re
+            
+            # Highlight comments FIRST (so they take precedence)
+            for match in re.finditer(r'#.*$', code, re.MULTILINE):
+                start = f"1.0+{match.start()}c"
+                end = f"1.0+{match.end()}c"
+                self.code_input.tag_add("ps_comment", start, end)
+            
+            # Highlight strings (double and single quotes)
+            for match in re.finditer(r'(["\'])(?:(?=(\\?))\2.)*?\1', code):
+                start = f"1.0+{match.start()}c"
+                end = f"1.0+{match.end()}c"
+                self.code_input.tag_add("ps_string", start, end)
+            
+            # PowerShell cmdlets and common commands (case-insensitive)
+            keywords = r'\b(Get-Process|Get-Service|Get-Item|Get-ChildItem|Set-Location|Write-Host|Write-Output|ForEach-Object|Where-Object|Select-Object|Sort-Object|Measure-Object|New-Item|Remove-Item|Copy-Item|Move-Item|Rename-Item|Test-Path|Invoke-Expression|Start-Process|Stop-Process|Get-Content|Set-Content|Add-Content|Clear-Content|Out-File|Import-Module|Export-ModuleMember|python|pip|node|npm|git|cd|dir|ls|pwd|echo|cat|rm|cp|mv|mkdir|clear|cls|exit|if|else|elseif|foreach|while|for|switch|function|param|return|break|continue|try|catch|finally)\b'
+            
+            # Apply keyword highlighting (case-insensitive)
+            for match in re.finditer(keywords, code, re.IGNORECASE):
+                start = f"1.0+{match.start()}c"
+                end = f"1.0+{match.end()}c"
+                self.code_input.tag_add("ps_keyword", start, end)
+            
+            # Highlight parameters (starting with - or --)
+            for match in re.finditer(r'--?[a-zA-Z_][a-zA-Z0-9_-]*', code):
+                start = f"1.0+{match.start()}c"
+                end = f"1.0+{match.end()}c"
+                self.code_input.tag_add("ps_parameter", start, end)
+            
+            # Highlight variables (starting with $)
+            for match in re.finditer(r'\$[a-zA-Z_][a-zA-Z0-9_]*', code):
+                start = f"1.0+{match.start()}c"
+                end = f"1.0+{match.end()}c"
+                self.code_input.tag_add("ps_variable", start, end)
+            
+            # Highlight operators (|, >, <, etc.)
+            for match in re.finditer(r'[|><&;]', code):
+                start = f"1.0+{match.start()}c"
+                end = f"1.0+{match.end()}c"
+                self.code_input.tag_add("ps_operator", start, end)
+            
+            # Raise comment tag priority to ensure it's always on top
+            self.code_input.tag_raise("ps_comment")
         except:
             pass
     
@@ -3998,6 +4089,96 @@ Created for efficient Python development"""
                 self.console_output.config(state=tk.DISABLED)
             else:
                 self.update_status("No code to execute")
+    
+    def run_powershell(self):
+        """Run PowerShell commands"""
+        if hasattr(self, 'code_input') and hasattr(self, 'console_output'):
+            code = self.code_input.get('1.0', tk.END).strip()
+            
+            if code:
+                import subprocess
+                import time
+                start_time = time.time()
+                
+                # Track execution
+                self.stats["executions"] += 1
+                
+                self.console_output.config(state=tk.NORMAL)
+                self.console_output.delete('1.0', tk.END)
+                self.console_output.insert('1.0', f">>> Executing PowerShell...\n{code}\n\n")
+                
+                try:
+                    # Execute PowerShell commands
+                    result = subprocess.run(
+                        ["powershell.exe", "-Command", code],
+                        capture_output=True,
+                        text=True,
+                        timeout=30  # 30 second timeout
+                    )
+                    
+                    execution_time = time.time() - start_time
+                    
+                    # Display stdout
+                    if result.stdout:
+                        self.console_output.insert(tk.END, f"Output:\n{result.stdout}\n")
+                    
+                    # Display stderr if any
+                    if result.stderr:
+                        self.console_output.insert(tk.END, f"Warnings/Errors:\n{result.stderr}\n", "warning")
+                        self.console_output.tag_config("warning", foreground="#ffaa00")
+                    
+                    # Check return code
+                    if result.returncode == 0:
+                        self.stats["successful_runs"] += 1
+                        self.console_output.insert(tk.END, f"✓ Execution completed successfully\n", "success")
+                        self.console_output.tag_config("success", foreground="#00ff00")
+                    else:
+                        self.stats["errors"] += 1
+                        self.console_output.insert(tk.END, f"✗ PowerShell exited with code {result.returncode}\n", "error")
+                        self.console_output.tag_config("error", foreground="#ff4444")
+                    
+                    self.stats["total_execution_time"] += execution_time
+                    self.update_status(f"Executed in {execution_time:.4f} seconds")
+                    
+                except subprocess.TimeoutExpired:
+                    execution_time = time.time() - start_time
+                    self.stats["errors"] += 1
+                    self.stats["total_execution_time"] += execution_time
+                    self.console_output.insert(tk.END, f"✗ Error: Command timed out after 30 seconds\n", "error")
+                    self.console_output.tag_config("error", foreground="#ff4444")
+                    self.update_status("Execution timed out")
+                    
+                except Exception as e:
+                    execution_time = time.time() - start_time
+                    self.stats["errors"] += 1
+                    self.stats["total_execution_time"] += execution_time
+                    self.console_output.insert(tk.END, f"✗ Error: {str(e)}\n", "error")
+                    self.console_output.tag_config("error", foreground="#ff4444")
+                    self.update_status(f"Error after {execution_time:.4f} seconds")
+                
+                self.console_output.config(state=tk.DISABLED)
+            else:
+                self.update_status("No PowerShell commands to execute")
+    
+    def toggle_console_mode(self):
+        """Toggle between Python and PowerShell modes"""
+        # Save current content
+        if hasattr(self, 'code_input'):
+            self.console_content = self.code_input.get('1.0', tk.END)
+        
+        # Toggle mode
+        if self.console_mode == "Python":
+            self.console_mode = "PowerShell"
+        else:
+            self.console_mode = "Python"
+        
+        # Clear the page container
+        for widget in self.page_container.winfo_children():
+            widget.destroy()
+        
+        # Refresh the console page to show new mode
+        self.show_console()
+        self.update_status(f"Switched to {self.console_mode} mode")
     
     def undo(self):
         """Undo last action"""
