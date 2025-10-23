@@ -540,6 +540,7 @@ class ModernUI:
     
     def load_page_content(self, page):
         """Load the actual page content"""
+        self.current_page = page  # Track current page for theme switching
         if page == "Dashboard":
             self.show_dashboard()
         elif page == "Console":
@@ -3338,6 +3339,43 @@ Memory Percent: {info.get('memory_percent', 0):.2f}%
         else:
             self.show_notification("❌ Please enter a valid API key", "error")
     
+    def switch_theme(self, theme):
+        """Switch between different color themes"""
+        self.current_theme = theme
+        
+        if theme == 'dark':
+            # Dark theme (current default)
+            self.bg_color = "#1e1e1e"
+            self.secondary_bg = "#2d2d2d"
+            self.text_color = "#ffffff"
+            self.accent_color = "#00d4aa"
+            self.button_hover = "#00e6bd"
+        elif theme == 'light':
+            # Light theme
+            self.bg_color = "#f5f5f5"
+            self.secondary_bg = "#ffffff"
+            self.text_color = "#1e1e1e"
+            self.accent_color = "#0078d4"
+            self.button_hover = "#1084d8"
+        elif theme == 'blue':
+            # Blue theme
+            self.bg_color = "#0d1117"
+            self.secondary_bg = "#161b22"
+            self.text_color = "#c9d1d9"
+            self.accent_color = "#58a6ff"
+            self.button_hover = "#79c0ff"
+        
+        # Update the root window background
+        self.root.configure(bg=self.bg_color)
+        
+        # Refresh the current page to apply new colors
+        current_page = getattr(self, 'current_page', 'Dashboard')
+        self.load_page(current_page)
+        
+        # Show notification
+        theme_names = {'dark': 'Dark', 'light': 'Light', 'blue': 'Blue'}
+        self.show_notification(f"✓ Switched to {theme_names[theme]} Theme!", "success")
+    
     def send_ai_message(self):
         """Send message to AI and get response"""
         message = self.ai_input.get("1.0", tk.END).strip()
@@ -3567,6 +3605,76 @@ Provide your answer. If you suggest code, wrap it in ```python code blocks. [/IN
                        font=("Segoe UI", 10),
                        bg=self.bg_color, fg="#a0a0a0")
         desc.pack(anchor="w", pady=(0, 20))
+        
+        # Theme Switcher - Featured Setting
+        theme_card = tk.Frame(container, bg=self.secondary_bg, highlightbackground=self.accent_color, 
+                             highlightthickness=2)
+        theme_card.pack(fill=tk.X, pady=(0, 20))
+        
+        theme_inner = tk.Frame(theme_card, bg=self.secondary_bg)
+        theme_inner.pack(fill=tk.X, padx=20, pady=15)
+        
+        # Theme header
+        theme_header = tk.Frame(theme_inner, bg=self.secondary_bg)
+        theme_header.pack(fill=tk.X, pady=(0, 10))
+        
+        tk.Label(theme_header, text="🎨 Theme Mode",
+                font=("Segoe UI", 14, "bold"),
+                bg=self.secondary_bg, fg=self.text_color).pack(side=tk.LEFT)
+        
+        tk.Label(theme_header, text="NEW!",
+                font=("Segoe UI", 8, "bold"),
+                bg=self.accent_color, fg="white",
+                padx=8, pady=2).pack(side=tk.LEFT, padx=(10, 0))
+        
+        # Theme buttons
+        theme_btns = tk.Frame(theme_inner, bg=self.secondary_bg)
+        theme_btns.pack(fill=tk.X)
+        
+        # Current theme indicator
+        current_theme = getattr(self, 'current_theme', 'dark')
+        
+        # Dark mode button
+        dark_btn = tk.Button(theme_btns, text="🌙 Dark Mode",
+                            font=("Segoe UI", 11, "bold"),
+                            bg=self.accent_color if current_theme == 'dark' else "#444444",
+                            fg="white",
+                            relief=tk.FLAT, cursor="hand2",
+                            padx=30, pady=12,
+                            command=lambda: self.switch_theme('dark'))
+        dark_btn.pack(side=tk.LEFT, padx=(0, 10))
+        dark_btn.bind("<Enter>", lambda e: dark_btn.config(bg=self.button_hover) if current_theme != 'dark' else None)
+        dark_btn.bind("<Leave>", lambda e: dark_btn.config(bg=self.accent_color if current_theme == 'dark' else "#444444"))
+        
+        # Light mode button
+        light_btn = tk.Button(theme_btns, text="☀️ Light Mode",
+                             font=("Segoe UI", 11, "bold"),
+                             bg=self.accent_color if current_theme == 'light' else "#444444",
+                             fg="white",
+                             relief=tk.FLAT, cursor="hand2",
+                             padx=30, pady=12,
+                             command=lambda: self.switch_theme('light'))
+        light_btn.pack(side=tk.LEFT, padx=(0, 10))
+        light_btn.bind("<Enter>", lambda e: light_btn.config(bg=self.button_hover) if current_theme != 'light' else None)
+        light_btn.bind("<Leave>", lambda e: light_btn.config(bg=self.accent_color if current_theme == 'light' else "#444444"))
+        
+        # Blue theme button
+        blue_btn = tk.Button(theme_btns, text="💎 Blue Theme",
+                            font=("Segoe UI", 11, "bold"),
+                            bg=self.accent_color if current_theme == 'blue' else "#444444",
+                            fg="white",
+                            relief=tk.FLAT, cursor="hand2",
+                            padx=30, pady=12,
+                            command=lambda: self.switch_theme('blue'))
+        blue_btn.pack(side=tk.LEFT)
+        blue_btn.bind("<Enter>", lambda e: blue_btn.config(bg=self.button_hover) if current_theme != 'blue' else None)
+        blue_btn.bind("<Leave>", lambda e: blue_btn.config(bg=self.accent_color if current_theme == 'blue' else "#444444"))
+        
+        # Theme description
+        tk.Label(theme_inner, 
+                text="Choose your preferred color scheme. Changes apply instantly!",
+                font=("Segoe UI", 9),
+                bg=self.secondary_bg, fg="#888888").pack(anchor="w", pady=(10, 0))
         
         # Create scrollable settings area
         canvas_frame = tk.Frame(container, bg=self.bg_color)
